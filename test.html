@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Δοκιμή σύνδεσης</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 24px; line-height: 1.5; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: #666; font-size: 14px; margin: 0 0 20px; }
+  button { display: block; width: 100%; padding: 16px; font-size: 16px; font-weight: 600;
+           background: #000; color: #fff; border: none; margin-bottom: 10px; }
+  button:active { background: #333; }
+  pre { background: #f4f4f4; padding: 14px; white-space: pre-wrap; word-break: break-all;
+        font-size: 13px; border-left: 3px solid #000; }
+  .ok { border-left-color: #0a7; }
+  .bad { border-left-color: #b00; }
+</style>
+</head>
+<body>
+
+<h1>Δοκιμή σύνδεσης</h1>
+<p class="sub">Αυτή η σελίδα δεν χρησιμοποιεί καμία εξωτερική βιβλιοθήκη.</p>
+
+<button onclick="testRead()">1. Διάβασε το πρόγραμμα σήμερα</button>
+<button onclick="testWrite()">2. Φτιάξε δοκιμαστικό λογαριασμό</button>
+
+<pre id="out">Πάτα ένα κουμπί…</pre>
+
+<script>
+var SUPABASE_URL = "https://qkjceupbxdujgytikxug.supabase.co";
+var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFramNldXBieGR1amd5dGlreHVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDI0NTUsImV4cCI6MjEwNDExODQ1NX0.cSsylfCvbqlvYgoeryf08jEVzvTjZGXli4dl7ZE7_Pc";
+
+var out = document.getElementById("out");
+function show(text, ok) {
+  out.textContent = text;
+  out.className = ok ? "ok" : "bad";
+}
+
+function rpc(fnName, args) {
+  return fetch(SUPABASE_URL + "/rest/v1/rpc/" + fnName, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY
+    },
+    body: JSON.stringify(args || {})
+  }).then(function (res) {
+    return res.text().then(function (t) {
+      return { status: res.status, ok: res.ok, body: t };
+    });
+  });
+}
+
+function testRead() {
+  show("Φόρτωση…", true);
+  var d = new Date();
+  var today = d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+  rpc("day_availability", { p_date: today }).then(function (r) {
+    show("Κατάσταση: " + r.status + "\n\n" + r.body, r.ok);
+  }).catch(function (e) {
+    show("Απέτυχε η σύνδεση:\n" + e, false);
+  });
+}
+
+function testWrite() {
+  show("Φόρτωση…", true);
+  var phone = "69" + String(Math.floor(Math.random() * 100000000)).padStart(8, "0");
+  rpc("sign_up_client", {
+    p_first_name: "Δοκιμή",
+    p_last_name: "Χρήστης",
+    p_phone: phone,
+    p_pin: "1234"
+  }).then(function (r) {
+    show("Κατάσταση: " + r.status + "\nΚινητό που δοκιμάστηκε: " + phone + "\n\n" + r.body, r.ok);
+  }).catch(function (e) {
+    show("Απέτυχε η σύνδεση:\n" + e, false);
+  });
+}
+</script>
+</body>
+</html>
