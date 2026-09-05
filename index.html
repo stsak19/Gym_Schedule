@@ -118,7 +118,7 @@ function applyTheme(choice) {
 }
 
 function readTheme() {
-  try { return localStorage.getItem(THEME_KEY) || "auto"; } catch (e) { return "auto"; }
+  try { return localStorage.getItem(THEME_KEY) || "light"; } catch (e) { return "light"; }
 }
 
 /* Public half of the push signing key. Safe to ship — it only lets
@@ -657,7 +657,7 @@ function MyBookings({ session, flash, theme, setTheme }) {
       <div className="mt-10 border-2 border-black p-4">
         <div className="f-display text-[14px] font-bold uppercase tracking-wide">Εμφάνιση</div>
         <div className="mt-3 flex border-2 border-black">
-          {[["auto", "Αυτόματο"], ["light", "Φωτεινό"], ["dark", "Σκούρο"]].map(([k, label], i) => (
+          {[["light", "Φωτεινό"], ["dark", "Σκούρο"], ["auto", "Αυτόματο"]].map(([k, label], i) => (
             <button key={k} onClick={() => setTheme(k)}
               className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
                 i > 0 ? "border-l-2 border-black" : ""} ${
