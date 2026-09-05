@@ -484,7 +484,7 @@ function BookTab({ session, flash }) {
         })}
       </div>
 
-      <div className="shrink-0 px-5 pt-4 pb-3">
+      <div className="shrink-0 border-b-2 border-black px-5 pt-4 pb-3">
         <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
         <p className="f-text mt-1 text-[13px] text-neutral-500">Διαθέσιμες ώρες και θέσεις που μένουν</p>
       </div>
@@ -502,7 +502,7 @@ function BookTab({ session, flash }) {
           </p>
         </div>
       ) : (
-        <div className="mt-5 divide-y divide-neutral-300 border-y-2 border-black">
+        <div className="divide-y divide-neutral-300 border-b-2 border-black">
           {(slots || []).map((s) => {
             const full = s.taken >= s.capacity;
             const isBusy = busySlot === s.slot_time;
