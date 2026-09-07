@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Kinesis — Διαχείριση</title>
+<title>Διαχείριση</title>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
@@ -42,6 +42,31 @@ const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const SUPABASE_URL = "https://qkjceupbxdujgytikxug.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFramNldXBieGR1amd5dGlreHVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDI0NTUsImV4cCI6MjEwNDExODQ1NX0.cSsylfCvbqlvYgoeryf08jEVzvTjZGXli4dl7ZE7_Pc";
 const TOKEN_KEY = "kinesis_admin_token";
+
+/* ---------- Όνομα γυμναστηρίου ----------
+   Δεν γράφεται πουθενά καρφωτό. Έρχεται από τις ρυθμίσεις και
+   ενημερώνεται αμέσως μόλις ο διαχειριστής το αλλάξει, χωρίς να
+   χρειάζεται ανανέωση της σελίδας. */
+let GYM_NAME = "Γυμναστήριο";
+const brandSubs = new Set();
+
+function setGymName(name) {
+  const clean = (name || "").trim();
+  if (!clean || clean === GYM_NAME) return;
+  GYM_NAME = clean;
+  document.title = GYM_NAME + " — Διαχείριση";
+  brandSubs.forEach((fn) => fn(GYM_NAME));
+}
+
+function useGymName() {
+  const [name, setName] = useState(GYM_NAME);
+  useEffect(() => {
+    brandSubs.add(setName);
+    setName(GYM_NAME);
+    return () => { brandSubs.delete(setName); };
+  }, []);
+  return name;
+}
 
 /* ---------- auth + data access ---------- */
 let accessToken = null;
@@ -563,6 +588,7 @@ function App() {
   const [tab, setTab] = useState("schedule");
   const [toast, setToast] = useState("");
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 900);
+  const brand = useGymName();
 
   const flash = useCallback((m) => { setToast(m); setTimeout(() => setToast(""), 2800); }, []);
 
@@ -663,7 +689,7 @@ function App() {
       {tab === "stats" && <Stats {...props} />}
       {tab === "access" && <Access {...props} />}
       {tab === "newsletter" && <Newsletter {...props} />}
-      {tab === "settings" && <Settings {...props} watchError={watch.error} />}
+      {tab === "settings" && <Settings {...props} sound={sound} onToggleSound={toggleSound} watchError={watch.error} />}
     </React.Fragment>
   );
 
@@ -675,7 +701,7 @@ function App() {
         <div className="sticky top-0 z-40 bg-white">
           <header className="flex items-center justify-between border-b-2 border-black px-5 pb-4 pt-6">
             <div>
-              <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">Kinesis</div>
+              <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
               <div className="f-display mt-1 text-[19px] font-extrabold uppercase">Διαχείριση</div>
             </div>
             <div className="flex items-center gap-2">
@@ -709,7 +735,7 @@ function App() {
         <main className="min-w-0 flex-1 pb-16">{content}</main>
 
         <aside className="flex w-[230px] shrink-0 flex-col border-l-2 border-black px-5 py-7">
-          <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">Kinesis</div>
+          <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
           <div className="f-display mt-1 text-[21px] font-extrabold uppercase tracking-tight">Διαχείριση</div>
           <div className="mt-4 flex items-center gap-2">
             <SoundSwitch on={sound} onToggle={toggleSound} />
@@ -741,6 +767,7 @@ function Login({ onDone }) {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const brand = useGymName();
 
   const go = async () => {
     if (!email.trim() || !password) { setErr("Συμπλήρωσε email και κωδικό"); return; }
@@ -753,7 +780,7 @@ function Login({ onDone }) {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6">
-      <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">Kinesis</div>
+      <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
       <h1 className="f-display mt-2 text-[34px] font-extrabold uppercase leading-none tracking-tight">Διαχείριση</h1>
       <div className="mt-8 space-y-2">
         <input value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }}
@@ -1582,7 +1609,8 @@ function CleanupPanel({ flash, onAuthFail }) {
     setInfo(data);
   }, [onAuthFail]);
 
-  useEffect(() => { if (open) load(); }, [open, load]);
+  /* Τα στοιχεία τα ζητάμε μόνο όταν ανοίξει το πάνελ. */
+  useEffect(() => { if (open && info === null) load(); }, [open, info, load]);
 
   const purge = async () => {
     setBusy(true);
@@ -1613,11 +1641,10 @@ function CleanupPanel({ flash, onAuthFail }) {
 
   return (
     <div className="mt-7 border-2 border-black p-4">
-      <button
-        onClick={() => { setOpen((v) => !v); setConfirm(false); }}
+      <button onClick={() => { setOpen(!open); setConfirm(false); }}
         className="flex w-full items-center justify-between gap-3 text-left">
         <span className="f-display text-[14px] font-bold uppercase tracking-wide">Ιστορικό και χώρος</span>
-        <span className="f-display text-[18px] leading-none text-neutral-400">{open ? "−" : "+"}</span>
+        <span className={`f-display shrink-0 text-[13px] leading-none transition-transform ${open ? "rotate-180" : ""}`}>▾</span>
       </button>
 
       {!open ? null : info === null ? (
@@ -1673,11 +1700,11 @@ function CleanupPanel({ flash, onAuthFail }) {
             ))}
           </div>
 
-          <Button variant="outline" className="mt-4" onClick={() => setConfirm((v) => !v)}>
-            {confirm ? "Κλείσιμο" : "Καθάρισμα ιστορικού"}
-          </Button>
-
-          {confirm && (
+          {!confirm ? (
+            <Button variant="outline" className="mt-4" onClick={() => setConfirm(true)}>
+              Καθάρισμα ιστορικού
+            </Button>
+          ) : (
             <div className="mt-4 border-2 border-red-600 bg-red-50 p-3">
               <div className="f-display text-[12px] font-bold uppercase tracking-wide text-red-700">
                 Σίγουρα;
@@ -1691,25 +1718,19 @@ function CleanupPanel({ flash, onAuthFail }) {
                 <Button size="sm" disabled={busy} onClick={purge}>
                   {busy ? "…" : "Ναι, σβήσ' τα"}
                 </Button>
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => setConfirm(false)}>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm(false)}>
                   Άκυρο
                 </Button>
               </div>
             </div>
           )}
-
-          <p className="f-text mt-4 max-w-[56ch] text-[12px] leading-relaxed text-neutral-500">
-            Ανεξάρτητα από αυτό, κάθε βράδυ τρέχει αυτόματο καθάρισμα που πετάει τα εσωτερικά
-            αρχεία καταγραφής, τις ειδοποιήσεις άνω των 7 ημερών και τις ξεχασμένες λίστες
-            αναμονής. Αυτά ήταν και το μεγαλύτερο βάρος στη βάση.
-          </p>
         </>
       )}
     </div>
   );
 }
 
-function NotifyPanel({ flash, watchError }) {
+function NotifyPanel({ flash, sound, onToggleSound, watchError }) {
   const supported = typeof Notification !== "undefined";
   const [perm, setPerm] = useState(supported ? Notification.permission : "unsupported");
   const [busy, setBusy] = useState(false);
@@ -1731,7 +1752,7 @@ function NotifyPanel({ flash, watchError }) {
 
   return (
     <div className="mt-7 border-2 border-black p-4">
-      <div className="f-display text-[14px] font-bold uppercase tracking-wide">Ειδοποίηση κρατήσεων &amp; ακυρώσεων</div>
+      <div className="f-display text-[14px] font-bold uppercase tracking-wide">Ειδοποίηση για νέες κρατήσεις</div>
 
       {perm === "unsupported" ? (
         <p className="f-text mt-2 text-[13px] leading-relaxed text-neutral-600">
@@ -1740,21 +1761,24 @@ function NotifyPanel({ flash, watchError }) {
       ) : perm === "denied" ? (
         <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
           Οι ειδοποιήσεις είναι μπλοκαρισμένες. Άνοιξέ τες από τις ρυθμίσεις του browser για αυτή τη
-          σελίδα και ξαναφόρτωσε.
+          σελίδα και ξαναφόρτωσε. Οι νέες κρατήσεις φαίνονται ούτως ή άλλως στην κορυφή της οθόνης.
         </p>
+      ) : perm === "granted" ? (
+        <>
+          <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
+            Ενεργές σε αυτή τη συσκευή. Έρχονται όσο η σελίδα διαχείρισης είναι ανοιχτή, ακόμα κι αν
+            δουλεύεις σε άλλη καρτέλα. Ο έλεγχος γίνεται κάθε λεπτό.
+          </p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={test}>Δοκιμαστική ειδοποίηση</Button>
+        </>
       ) : (
         <>
           <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
-            Έρχονται όσο η σελίδα είναι ανοιχτή, ακόμα κι αν δουλεύεις σε άλλη καρτέλα.
+            Ειδοποίηση κάθε φορά που ένας πελάτης κλείνει ραντεβού, με όνομα, ημέρα και ώρα.
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={test}>Δοκιμαστική ειδοποίηση</Button>
-            {perm !== "granted" && (
-              <Button size="sm" disabled={busy} onClick={ask}>
-                {busy ? "…" : "Ενεργοποίηση"}
-              </Button>
-            )}
-          </div>
+          <Button className="mt-4" disabled={busy} onClick={ask}>
+            {busy ? "…" : "Ενεργοποίηση ειδοποιήσεων"}
+          </Button>
         </>
       )}
 
@@ -1770,11 +1794,21 @@ function NotifyPanel({ flash, watchError }) {
         </div>
       )}
 
+      <div className="mt-5 flex items-center justify-between gap-4 border-t-2 border-black pt-4">
+        <div>
+          <div className="f-text text-[15px]">Ήχος σε νέα κράτηση</div>
+          <div className="f-text mt-0.5 max-w-[44ch] text-[12px] leading-relaxed text-neutral-500">
+            Ένα σύντομο κουδούνισμα. Ο ίδιος διακόπτης είναι και δίπλα στην καμπάνα. Ο browser θέλει
+            ένα πάτημα στη σελίδα μετά από κάθε άνοιγμα πριν επιτρέψει ήχο.
+          </div>
+        </div>
+        <SoundSwitch on={sound} onToggle={onToggleSound} />
+      </div>
     </div>
   );
 }
 
-function Settings({ flash, onAuthFail, watchError }) {
+function Settings({ flash, onAuthFail, sound, onToggleSound, watchError }) {
   const [s, setS] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -1784,6 +1818,7 @@ function Settings({ flash, onAuthFail, watchError }) {
       if (error === "AUTH") { onAuthFail(); return; }
       if (error) { flash("Δεν φόρτωσαν οι ρυθμίσεις"); return; }
       setS(data);
+      setGymName(data?.gym_name);
     })();
   }, [flash, onAuthFail]);
 
@@ -1795,6 +1830,7 @@ function Settings({ flash, onAuthFail, watchError }) {
     setSaving(false);
     if (error === "AUTH") { onAuthFail(); return; }
     if (error || !data?.ok) { flash("Δεν αποθηκεύτηκε"); return; }
+    setGymName(s.gym_name);
     flash("Αποθηκεύτηκε");
   };
 
@@ -1814,7 +1850,7 @@ function Settings({ flash, onAuthFail, watchError }) {
     <div className="max-w-2xl px-5 sm:px-6">
       <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Ρυθμίσεις</h2>
 
-      <NotifyPanel flash={flash} watchError={watchError} />
+      <NotifyPanel flash={flash} sound={sound} onToggleSound={onToggleSound} watchError={watchError} />
 
       <h3 className="f-display mt-7 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Κρατήσεις</h3>
       <div className="divide-y divide-neutral-200 border-y-2 border-black">
@@ -1953,7 +1989,21 @@ if ("serviceWorker" in navigator) {
   else window.addEventListener("load", reg);
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+/* Το όνομα φαίνεται στην πρώτη κιόλας οθόνη, ακόμα και πριν τη
+   σύνδεση, οπότε το ζητάμε από τη δημόσια app_settings. Αν ο
+   διακομιστής αργήσει πάνω από 3 δευτερόλεπτα, ξεκινάμε με την
+   εφεδρική τιμή αντί να μείνει η σελίδα στο «Φόρτωση…». */
+async function loadBrand() {
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
+  const call = rpc("app_settings", {}).then((r) => (r.error ? null : r.data)).catch(() => null);
+  const data = await Promise.race([call, timeout]);
+  if (data && data.gym_name) setGymName(data.gym_name);
+  else document.title = GYM_NAME + " — Διαχείριση";
+}
+
+loadBrand().then(() => {
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+});
 </script>
 </body>
 </html>
