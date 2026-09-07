@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="theme-color" content="#000000" />
+<title>Κριτικές</title>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com/3.4.3"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Text:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800;900&family=Space+Mono:wght@400;700&display=swap');
+html, body { margin: 0; background: #fff; }
+body { font-family: 'Big Shoulders Text', system-ui, sans-serif; }
+.f-display { font-family: 'Big Shoulders Display', system-ui, sans-serif; letter-spacing: 0.005em; }
+.f-mono { font-family: 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="root" style="font-family:system-ui,sans-serif;padding:24px;color:#666;font-size:14px;">Φόρτωση…</div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+/* Ίδιο δημόσιο κλειδί με τις άλλες σελίδες. Δεν δίνει πρόσβαση σε
+   τίποτα από μόνο του — ο πίνακας reviews δεν διαβάζεται με anon,
+   μόνο μέσα από τις dev_* συναρτήσεις, που θέλουν τον κωδικό. */
+const SUPABASE_URL = "https://qkjceupbxdujgytikxug.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFramNldXBieGR1amd5dGlreHVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDI0NTUsImV4cCI6MjEwNDExODQ1NX0.cSsylfCvbqlvYgoeryf08jEVzvTjZGXli4dl7ZE7_Pc";
+
+const KEY_STORE = "kinesis_dev_key";
+
+async function rpc(fnName, args) {
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + fnName, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(args || {}),
+    });
+    const text = await res.text();
+    if (!res.ok) return { data: null, error: text || res.statusText };
+    return { data: text ? JSON.parse(text) : null, error: null };
+  } catch (e) {
+    return { data: null, error: String(e) };
+  }
+}
+
+function fmt(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function Button({ children, onClick, variant = "primary", disabled, size = "md", className = "" }) {
+  const base = "f-display inline-flex items-center justify-center border border-black font-bold uppercase tracking-wide select-none";
+  const sizes = { md: "h-12 px-5 text-[15px]", sm: "h-9 px-3 text-[13px]", lg: "h-14 px-6 text-[17px] w-full" };
+  const variants = {
+    primary: "bg-black text-white active:bg-white active:text-black disabled:bg-neutral-200 disabled:text-neutral-400 disabled:border-neutral-200",
+    outline: "bg-white text-black active:bg-black active:text-white disabled:text-neutral-300 disabled:border-neutral-200",
+  };
+  return (
+    <button onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+/* Η είσοδος. Ο κωδικός δεν ταξιδεύει πουθενά αλλού — πάει στη βάση,
+   συγκρίνεται με το hash και δεν επιστρέφει ποτέ. */
+function Gate({ onIn }) {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const go = async () => {
+    if (!key.trim()) return;
+    setBusy(true); setErr("");
+    const { data, error } = await rpc("dev_reviews", { p_key: key.trim() });
+    setBusy(false);
+    if (error) { setErr("Δεν έγινε σύνδεση"); return; }
+    if (!data || data.ok !== true) { setErr(data && data.error ? data.error : "Λάθος κωδικός"); return; }
+    try { sessionStorage.setItem(KEY_STORE, key.trim()); } catch (e) {}
+    onIn(key.trim(), data.reviews || []);
+  };
+
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-6">
+      <div className="f-display text-[34px] font-extrabold uppercase leading-none tracking-tight">Κριτικές</div>
+      <p className="mt-3 text-[14px] text-neutral-500">
+        Ιδιωτική σελίδα. Μόνο για τον δημιουργό της εφαρμογής.
+      </p>
+      <input type="password" value={key} autoComplete="off"
+        onChange={(e) => setKey(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") go(); }}
+        placeholder="Κωδικός"
+        className="mt-6 h-14 w-full border border-black px-4 text-[16px] outline-none" />
+      {err && <div className="mt-3 text-[13px] text-red-600">{err}</div>}
+      <div className="mt-4">
+        <Button size="lg" disabled={busy || !key.trim()} onClick={go}>
+          {busy ? "Έλεγχος…" : "Είσοδος"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ChangeKey({ devKey, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const save = async () => {
+    setBusy(true); setMsg("");
+    const { data, error } = await rpc("dev_set_key", { p_key: devKey, p_new: next.trim() });
+    setBusy(false);
+    if (error || !data || data.ok !== true) {
+      setMsg((data && data.error) || "Δεν άλλαξε");
+      return;
+    }
+    setMsg("Άλλαξε. Ξαναμπές με τον νέο.");
+    setNext("");
+    setTimeout(onChanged, 1200);
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="f-display mt-8 text-[12px] font-bold uppercase tracking-wide text-neutral-400 underline">
+        Αλλαγή κωδικού
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-8 border border-black p-4">
+      <div className="f-display text-[13px] font-bold uppercase tracking-wide">Αλλαγή κωδικού</div>
+      <input type="password" value={next} autoComplete="off"
+        onChange={(e) => setNext(e.target.value)}
+        placeholder="Νέος κωδικός (6+ χαρακτήρες)"
+        className="mt-3 h-12 w-full border border-black px-3 text-[15px] outline-none" />
+      {msg && <div className="mt-2 text-[13px] text-neutral-600">{msg}</div>}
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" disabled={busy || next.trim().length < 6} onClick={save}>
+          {busy ? "…" : "Αποθήκευση"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => { setOpen(false); setMsg(""); setNext(""); }}>
+          Άκυρο
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewList({ devKey, initial, onOut }) {
+  const [rows, setRows] = useState(initial);
+  const [busy, setBusy] = useState(false);
+
+  const reload = async () => {
+    setBusy(true);
+    const { data, error } = await rpc("dev_reviews", { p_key: devKey });
+    setBusy(false);
+    if (!error && data && data.ok) setRows(data.reviews || []);
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Να σβηστεί αυτή η κριτική;")) return;
+    const { data } = await rpc("dev_delete_review", { p_key: devKey, p_id: id });
+    if (data && data.ok) setRows((r) => r.filter((x) => x.id !== id));
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-[720px] px-5 pb-16 pt-8">
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="f-display text-[30px] font-extrabold uppercase leading-none tracking-tight">Κριτικές</div>
+          <div className="mt-1 text-[13px] text-neutral-500">
+            {rows.length === 0 ? "Καμία ακόμα" : `${rows.length} συνολικά`} · χωρίς στοιχεία αποστολέα
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={reload}>
+            {busy ? "…" : "Ανανέωση"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={onOut}>Έξοδος</Button>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="mt-10 border border-dashed border-neutral-300 p-8 text-center text-[14px] text-neutral-400">
+          Μόλις στείλει κάποιος πελάτης τη γνώμη του, θα εμφανιστεί εδώ.
+        </div>
+      ) : (
+        <div className="mt-6 space-y-4">
+          {rows.map((r) => (
+            <div key={r.id} className="border border-black p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="f-display text-[16px] font-bold uppercase tracking-wide">
+                    Ανώνυμη γνώμη
+                  </div>
+                  <div className="f-mono mt-1 text-[11px] text-neutral-500">
+                    {fmt(r.updated_at)}
+                  </div>
+                </div>
+                <button onClick={() => remove(r.id)}
+                  className="f-display shrink-0 text-[11px] font-bold uppercase tracking-wide text-neutral-400 underline">
+                  Διαγραφή
+                </button>
+              </div>
+
+              {r.likes && (
+                <div className="mt-4">
+                  <div className="f-display text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-400">
+                    Του αρέσει
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-[14px] leading-relaxed">{r.likes}</p>
+                </div>
+              )}
+
+              {r.dislikes && (
+                <div className="mt-4">
+                  <div className="f-display text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-400">
+                    Δεν του αρέσει
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-[14px] leading-relaxed">{r.dislikes}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ChangeKey devKey={devKey} onChanged={onOut} />
+
+      <div className="mt-10 border-t border-neutral-200 pt-4 text-center text-[12px] text-neutral-400">
+        Created by Ευστάθιος Κωνσταντίνος Τσακίρης
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [devKey, setDevKey] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [checking, setChecking] = useState(true);
+
+  /* Ο κωδικός μένει μόνο σε αυτή την καρτέλα. Κλείνει η καρτέλα,
+     ξεχνιέται. */
+  useEffect(() => {
+    (async () => {
+      let saved = null;
+      try { saved = sessionStorage.getItem(KEY_STORE); } catch (e) {}
+      if (saved) {
+        const { data } = await rpc("dev_reviews", { p_key: saved });
+        if (data && data.ok) { setDevKey(saved); setRows(data.reviews || []); }
+        else { try { sessionStorage.removeItem(KEY_STORE); } catch (e) {} }
+      }
+      setChecking(false);
+    })();
+  }, []);
+
+  const out = () => {
+    try { sessionStorage.removeItem(KEY_STORE); } catch (e) {}
+    setDevKey(null); setRows([]);
+  };
+
+  if (checking) {
+    return <div className="p-6 text-[14px] text-neutral-400">Φόρτωση…</div>;
+  }
+  if (!devKey) {
+    return <Gate onIn={(k, r) => { setDevKey(k); setRows(r); }} />;
+  }
+  return <ReviewList devKey={devKey} initial={rows} onOut={out} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
