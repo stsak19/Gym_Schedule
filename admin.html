@@ -1349,57 +1349,76 @@ function Hours({ flash, onAuthFail }) {
 
   /* Αλλάζοντας μέρα ή καρτέλα, η ερώτηση επιβεβαίωσης κλείνει — μη
      μείνει ανοιχτή και πατηθεί για άλλη μέρα από αυτήν που δείχνει. */
-  useEffect(() => { setAskClose(false); }, [date, scope]);
+  useEffect(() => { setAskClose(false); }, [date, scope, weekday]);
 
   const today = iso(new Date());
-  const dayClosed = slots.length > 0 && slots.every((s) => s.capacity === 0);
+  const allClosed = slots.length > 0 && slots.every((s) => s.capacity === 0);
   const dayTaken = slots.reduce((n, s) => n + (s.taken || 0), 0);
 
-  /* «Κλειστά σήμερα»: μηδενίζει με ένα πάτημα όλες τις ώρες της μέρας
-     που δείχνει η λωρίδα. Πρώτα φεύγουν οι κρατήσεις — η βάση δεν
-     αφήνει τις θέσεις να πέσουν κάτω από όσες έχουν πιαστεί, και
-     άλλωστε αν το γυμναστήριο είναι κλειστό δεν έχει νόημα να
-     περιμένει κανείς. */
-  const closeDay = async () => {
-    setBusy(true);
-    const { data: day, error: dayErr } = await rpc("admin_day", { p_date: date });
-    if (dayErr === "AUTH") { setBusy(false); onAuthFail(); return; }
-    if (dayErr) { setBusy(false); flash("Δεν έκλεισε η μέρα"); return; }
+  /* Το κείμενο του κουμπιού λέει πάντα σε τι θα εφαρμοστεί: στη μέρα
+     της λωρίδας ή στον εβδομαδιαίο κανόνα. */
+  const closeLabel = scope === "weekday"
+    ? `Κλειστά κάθε ${DAYS_LONG[weekday]}`
+    : date === today ? "Κλειστά σήμερα" : `Κλειστά ${fmtDay(date)}`;
 
-    const ids = (day?.slots || []).flatMap((s) => (s.people || [])
-      .filter((p) => p.status !== "cancelled")
-      .map((p) => p.booking_id));
-
-    for (const id of ids) {
-      const { error } = await rpc("admin_set_status", { p_booking_id: id, p_status: "cancelled" });
-      if (error === "AUTH") { setBusy(false); onAuthFail(); return; }
-    }
-
+  /* Ένα πέρασμα σε όλες τις ώρες, με ό,τι scope δείχνει η οθόνη.
+     Γυρίζει "AUTH" ή πόσες ώρες δεν πέτυχαν. */
+  const setAll = async (cap) => {
     let failed = 0;
     for (const s of slots) {
-      if (s.capacity === 0) continue;
+      if (s.capacity === cap) continue;
       const { data, error } = await rpc("admin_set_capacity", {
-        p_scope: "date",
-        p_date: date,
-        p_weekday: null,
+        p_scope: scope,
+        p_date: scope === "date" ? date : null,
+        p_weekday: scope === "weekday" ? weekday : null,
         p_time: s.slot_time,
-        p_capacity: 0,
+        p_capacity: cap,
       });
-      if (error === "AUTH") { setBusy(false); onAuthFail(); return; }
+      if (error === "AUTH") return "AUTH";
       if (error || !data?.ok) failed++;
     }
+    return failed;
+  };
+
+  /* Κλείνει με ένα πάτημα όλες τις ώρες. Στη συγκεκριμένη μέρα
+     φεύγουν πρώτα οι κρατήσεις — η βάση δεν αφήνει τις θέσεις να
+     πέσουν κάτω από όσες έχουν πιαστεί, και άλλωστε αν το γυμναστήριο
+     είναι κλειστό δεν έχει νόημα να περιμένει κανείς. Ο εβδομαδιαίος
+     κανόνας δεν πειράζει κρατήσεις: είναι κανόνας, όχι ακύρωση. */
+  const closeAll = async () => {
+    setBusy(true);
+    let cancelled = 0;
+
+    if (scope === "date") {
+      const { data: day, error: dayErr } = await rpc("admin_day", { p_date: date });
+      if (dayErr === "AUTH") { setBusy(false); onAuthFail(); return; }
+      if (dayErr) { setBusy(false); flash("Δεν έκλεισε η μέρα"); return; }
+
+      const ids = (day?.slots || []).flatMap((s) => (s.people || [])
+        .filter((p) => p.status !== "cancelled")
+        .map((p) => p.booking_id));
+
+      for (const id of ids) {
+        const { error } = await rpc("admin_set_status", { p_booking_id: id, p_status: "cancelled" });
+        if (error === "AUTH") { setBusy(false); onAuthFail(); return; }
+      }
+      cancelled = ids.length;
+    }
+
+    const failed = await setAll(0);
+    if (failed === "AUTH") { setBusy(false); onAuthFail(); return; }
 
     setBusy(false);
     setAskClose(false);
     if (failed) flash("Κάποιες ώρες δεν έκλεισαν");
-    else if (ids.length) flash(`Κλειστά · ${ids.length} ${ids.length === 1 ? "κράτηση ακυρώθηκε" : "κρατήσεις ακυρώθηκαν"}`);
+    else if (cancelled) flash(`Κλειστά · ${cancelled} ${cancelled === 1 ? "κράτηση ακυρώθηκε" : "κρατήσεις ακυρώθηκαν"}`);
     else flash("Κλειστά");
     load();
   };
 
-  /* Ξανανοίγει τη μέρα βάζοντας παντού τις προεπιλεγμένες θέσεις των
+  /* Ξανανοίγει βάζοντας παντού τις προεπιλεγμένες θέσεις των
      ρυθμίσεων. Ώρες που θέλει διαφορετικές τις πειράζει μετά μία μία. */
-  const openDay = async () => {
+  const openAll = async () => {
     setBusy(true);
     const { data: st, error: stErr } = await rpc("admin_get_settings", {});
     if (stErr === "AUTH") { setBusy(false); onAuthFail(); return; }
@@ -1410,21 +1429,11 @@ function Hours({ flash, onAuthFail }) {
       return;
     }
 
-    let failed = 0;
-    for (const s of slots) {
-      const { data, error } = await rpc("admin_set_capacity", {
-        p_scope: "date",
-        p_date: date,
-        p_weekday: null,
-        p_time: s.slot_time,
-        p_capacity: cap,
-      });
-      if (error === "AUTH") { setBusy(false); onAuthFail(); return; }
-      if (error || !data?.ok) failed++;
-    }
+    const failed = await setAll(cap);
+    if (failed === "AUTH") { setBusy(false); onAuthFail(); return; }
 
     setBusy(false);
-    flash(failed ? "Κάποιες ώρες δεν άνοιξαν" : `Άνοιξε η μέρα · ${cap} θέσεις ανά ώρα`);
+    flash(failed ? "Κάποιες ώρες δεν άνοιξαν" : `Άνοιξε · ${cap} θέσεις ανά ώρα`);
     load();
   };
 
@@ -1447,50 +1456,19 @@ function Hours({ flash, onAuthFail }) {
       </div>
 
       {scope === "date" ? (
-        <>
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
-            {days.map((d) => {
-              const dd = parseISO(d), on = d === date;
-              return (
-                <button key={d} onClick={() => setDate(d)}
-                  className={`flex h-[56px] w-[50px] shrink-0 flex-col items-center justify-center border-2 ${
-                    on ? "border-black bg-black text-white" : "border-neutral-300 hover:border-black"}`}>
-                  <span className="f-text text-[10px] uppercase text-neutral-400">{DAYS[dd.getDay()]}</span>
-                  <span className="f-mono mt-1 text-[15px] leading-none">{dd.getDate()}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {loading ? null : dayClosed ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button variant="outline" size="sm" disabled={busy} onClick={openDay}>
-                {busy ? "Άνοιγμα…" : "Άνοιγμα ημέρας"}
-              </Button>
-              <span className="f-text text-[12px] text-neutral-500">
-                Κλειστά — οι πελάτες δεν βλέπουν καμία ώρα.
-              </span>
-            </div>
-          ) : !askClose ? (
-            <Button variant="outline" size="sm" onClick={() => setAskClose(true)}>
-              {date === today ? "Κλειστά σήμερα" : `Κλειστά ${fmtDay(date)}`}
-            </Button>
-          ) : (
-            <div className="border-2 border-black p-4">
-              <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
-                Μηδενίζονται οι θέσεις σε όλες τις ώρες {date === today ? "για σήμερα" : `για ${fmtDayLong(date)}`},
-                οπότε η μέρα δεν εμφανίζεται καθόλου στην εφαρμογή των πελατών.
-                {dayTaken > 0 && ` Οι ${dayTaken} κρατήσεις που υπάρχουν ακυρώνονται και οι πελάτες το βλέπουν στην εφαρμογή τους.`}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button disabled={busy} onClick={closeDay}>
-                  {busy ? "Κλείσιμο…" : "Ναι, κλειστά"}
-                </Button>
-                <Button variant="ghost" disabled={busy} onClick={() => setAskClose(false)}>Άκυρο</Button>
-              </div>
-            </div>
-          )}
-        </>
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+          {days.map((d) => {
+            const dd = parseISO(d), on = d === date;
+            return (
+              <button key={d} onClick={() => setDate(d)}
+                className={`flex h-[56px] w-[50px] shrink-0 flex-col items-center justify-center border-2 ${
+                  on ? "border-black bg-black text-white" : "border-neutral-300 hover:border-black"}`}>
+                <span className="f-text text-[10px] uppercase text-neutral-400">{DAYS[dd.getDay()]}</span>
+                <span className="f-mono mt-1 text-[15px] leading-none">{dd.getDate()}</span>
+              </button>
+            );
+          })}
+        </div>
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
           {DAYS.map((label, i) => (
@@ -1500,6 +1478,50 @@ function Hours({ flash, onAuthFail }) {
               {label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Κλείσιμο με ένα πάτημα — ίδιο κουμπί και στις δύο καρτέλες,
+          αλλάζει μόνο το τι πιάνει: τη μέρα ή τον εβδομαδιαίο κανόνα. */}
+      {loading ? null : allClosed ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button variant="outline" size="sm" disabled={busy} onClick={openAll}>
+            {busy ? "Άνοιγμα…" : scope === "weekday" ? "Άνοιγμα ημέρας εβδομάδας" : "Άνοιγμα ημέρας"}
+          </Button>
+          <span className="f-text text-[12px] text-neutral-500">
+            {scope === "weekday"
+              ? `Κλειστά κάθε ${DAYS_LONG[weekday]}, εκτός από μέρες με ξεχωριστή ρύθμιση.`
+              : "Κλειστά — οι πελάτες δεν βλέπουν καμία ώρα."}
+          </span>
+        </div>
+      ) : !askClose ? (
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => setAskClose(true)}>
+          {closeLabel}
+        </Button>
+      ) : (
+        <div className="mt-3 border-2 border-black p-4">
+          <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
+            {scope === "weekday" ? (
+              <>
+                Μηδενίζονται οι θέσεις σε όλες τις ώρες για κάθε {DAYS_LONG[weekday]},
+                από εδώ και πέρα. Ημερομηνίες με ξεχωριστή ρύθμιση δεν αλλάζουν,
+                και οι κρατήσεις που έχουν γίνει ήδη μένουν όπως είναι — αν θέλεις
+                να φύγουν, κλείσε τη συγκεκριμένη μέρα.
+              </>
+            ) : (
+              <>
+                Μηδενίζονται οι θέσεις σε όλες τις ώρες {date === today ? "για σήμερα" : `για ${fmtDayLong(date)}`},
+                οπότε η μέρα δεν εμφανίζεται καθόλου στην εφαρμογή των πελατών.
+                {dayTaken > 0 && ` Οι ${dayTaken} κρατήσεις που υπάρχουν ακυρώνονται και οι πελάτες το βλέπουν στην εφαρμογή τους.`}
+              </>
+            )}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={busy} onClick={closeAll}>
+              {busy ? "Κλείσιμο…" : "Ναι, κλειστά"}
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setAskClose(false)}>Άκυρο</Button>
+          </div>
         </div>
       )}
 
