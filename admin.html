@@ -1292,8 +1292,6 @@ function Hours({ flash, onAuthFail }) {
   const [weekday, setWeekday] = useState(new Date().getDay());
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [askClose, setAskClose] = useState(false);
-  const [busy, setBusy] = useState(false);
 
   /* Ίδιο παράθυρο με το Πρόγραμμα: όσες μέρες μπροστά ανοίγουν οι
      κρατήσεις. Πίσω δεν έχει νόημα — δεν αλλάζεις θέσεις σε μέρα
@@ -1347,96 +1345,6 @@ function Hours({ flash, onAuthFail }) {
     load();
   };
 
-  /* Αλλάζοντας μέρα ή καρτέλα, η ερώτηση επιβεβαίωσης κλείνει — μη
-     μείνει ανοιχτή και πατηθεί για άλλη μέρα από αυτήν που δείχνει. */
-  useEffect(() => { setAskClose(false); }, [date, scope, weekday]);
-
-  const today = iso(new Date());
-  const allClosed = slots.length > 0 && slots.every((s) => s.capacity === 0);
-  const dayTaken = slots.reduce((n, s) => n + (s.taken || 0), 0);
-
-  /* Το κείμενο του κουμπιού λέει πάντα σε τι θα εφαρμοστεί: στη μέρα
-     της λωρίδας ή στον εβδομαδιαίο κανόνα. */
-  const closeLabel = scope === "weekday"
-    ? `Κλειστά κάθε ${DAYS_LONG[weekday]}`
-    : date === today ? "Κλειστά σήμερα" : `Κλειστά ${fmtDay(date)}`;
-
-  /* Ένα πέρασμα σε όλες τις ώρες, με ό,τι scope δείχνει η οθόνη.
-     Γυρίζει "AUTH" ή πόσες ώρες δεν πέτυχαν. */
-  const setAll = async (cap) => {
-    let failed = 0;
-    for (const s of slots) {
-      if (s.capacity === cap) continue;
-      const { data, error } = await rpc("admin_set_capacity", {
-        p_scope: scope,
-        p_date: scope === "date" ? date : null,
-        p_weekday: scope === "weekday" ? weekday : null,
-        p_time: s.slot_time,
-        p_capacity: cap,
-      });
-      if (error === "AUTH") return "AUTH";
-      if (error || !data?.ok) failed++;
-    }
-    return failed;
-  };
-
-  /* Κλείνει με ένα πάτημα όλες τις ώρες. Στη συγκεκριμένη μέρα
-     φεύγουν πρώτα οι κρατήσεις — η βάση δεν αφήνει τις θέσεις να
-     πέσουν κάτω από όσες έχουν πιαστεί, και άλλωστε αν το γυμναστήριο
-     είναι κλειστό δεν έχει νόημα να περιμένει κανείς. Ο εβδομαδιαίος
-     κανόνας δεν πειράζει κρατήσεις: είναι κανόνας, όχι ακύρωση. */
-  const closeAll = async () => {
-    setBusy(true);
-    let cancelled = 0;
-
-    if (scope === "date") {
-      const { data: day, error: dayErr } = await rpc("admin_day", { p_date: date });
-      if (dayErr === "AUTH") { setBusy(false); onAuthFail(); return; }
-      if (dayErr) { setBusy(false); flash("Δεν έκλεισε η μέρα"); return; }
-
-      const ids = (day?.slots || []).flatMap((s) => (s.people || [])
-        .filter((p) => p.status !== "cancelled")
-        .map((p) => p.booking_id));
-
-      for (const id of ids) {
-        const { error } = await rpc("admin_set_status", { p_booking_id: id, p_status: "cancelled" });
-        if (error === "AUTH") { setBusy(false); onAuthFail(); return; }
-      }
-      cancelled = ids.length;
-    }
-
-    const failed = await setAll(0);
-    if (failed === "AUTH") { setBusy(false); onAuthFail(); return; }
-
-    setBusy(false);
-    setAskClose(false);
-    if (failed) flash("Κάποιες ώρες δεν έκλεισαν");
-    else if (cancelled) flash(`Κλειστά · ${cancelled} ${cancelled === 1 ? "κράτηση ακυρώθηκε" : "κρατήσεις ακυρώθηκαν"}`);
-    else flash("Κλειστά");
-    load();
-  };
-
-  /* Ξανανοίγει βάζοντας παντού τις προεπιλεγμένες θέσεις των
-     ρυθμίσεων. Ώρες που θέλει διαφορετικές τις πειράζει μετά μία μία. */
-  const openAll = async () => {
-    setBusy(true);
-    const { data: st, error: stErr } = await rpc("admin_get_settings", {});
-    if (stErr === "AUTH") { setBusy(false); onAuthFail(); return; }
-    const cap = Number(st?.default_capacity) || 0;
-    if (!cap) {
-      setBusy(false);
-      flash("Οι προεπιλεγμένες θέσεις είναι 0 — όρισε τις ώρες μία μία");
-      return;
-    }
-
-    const failed = await setAll(cap);
-    if (failed === "AUTH") { setBusy(false); onAuthFail(); return; }
-
-    setBusy(false);
-    flash(failed ? "Κάποιες ώρες δεν άνοιξαν" : `Άνοιξε · ${cap} θέσεις ανά ώρα`);
-    load();
-  };
-
   return (
     <div className="px-5 sm:px-6">
       <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Χωρητικότητα ανά ώρα</h2>
@@ -1478,50 +1386,6 @@ function Hours({ flash, onAuthFail }) {
               {label}
             </button>
           ))}
-        </div>
-      )}
-
-      {/* Κλείσιμο με ένα πάτημα — ίδιο κουμπί και στις δύο καρτέλες,
-          αλλάζει μόνο το τι πιάνει: τη μέρα ή τον εβδομαδιαίο κανόνα. */}
-      {loading ? null : allClosed ? (
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm" disabled={busy} onClick={openAll}>
-            {busy ? "Άνοιγμα…" : scope === "weekday" ? "Άνοιγμα ημέρας εβδομάδας" : "Άνοιγμα ημέρας"}
-          </Button>
-          <span className="f-text text-[12px] text-neutral-500">
-            {scope === "weekday"
-              ? `Κλειστά κάθε ${DAYS_LONG[weekday]}, εκτός από μέρες με ξεχωριστή ρύθμιση.`
-              : "Κλειστά — οι πελάτες δεν βλέπουν καμία ώρα."}
-          </span>
-        </div>
-      ) : !askClose ? (
-        <Button variant="outline" size="sm" className="mt-3" onClick={() => setAskClose(true)}>
-          {closeLabel}
-        </Button>
-      ) : (
-        <div className="mt-3 border-2 border-black p-4">
-          <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
-            {scope === "weekday" ? (
-              <>
-                Μηδενίζονται οι θέσεις σε όλες τις ώρες για κάθε {DAYS_LONG[weekday]},
-                από εδώ και πέρα. Ημερομηνίες με ξεχωριστή ρύθμιση δεν αλλάζουν,
-                και οι κρατήσεις που έχουν γίνει ήδη μένουν όπως είναι — αν θέλεις
-                να φύγουν, κλείσε τη συγκεκριμένη μέρα.
-              </>
-            ) : (
-              <>
-                Μηδενίζονται οι θέσεις σε όλες τις ώρες {date === today ? "για σήμερα" : `για ${fmtDayLong(date)}`},
-                οπότε η μέρα δεν εμφανίζεται καθόλου στην εφαρμογή των πελατών.
-                {dayTaken > 0 && ` Οι ${dayTaken} κρατήσεις που υπάρχουν ακυρώνονται και οι πελάτες το βλέπουν στην εφαρμογή τους.`}
-              </>
-            )}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={closeAll}>
-              {busy ? "Κλείσιμο…" : "Ναι, κλειστά"}
-            </Button>
-            <Button variant="ghost" disabled={busy} onClick={() => setAskClose(false)}>Άκυρο</Button>
-          </div>
         </div>
       )}
 
@@ -1984,6 +1848,65 @@ function QRCode({ text, size = 190 }) {
   );
 }
 
+/* SVG για CAD / 3D εκτύπωση.
+   Τρεις διαφορές από το QR της οθόνης:
+   - Τα γειτονικά τετράγωνα ενώνονται σε μεγαλύτερα ορθογώνια, ώστε να
+     μη φορτώνει το Fusion με χιλιάδες γραμμές.
+   - Οι συντεταγμένες βγαίνουν σε px στα 96dpi, όσα χρειάζονται για να
+     πέσει το σχέδιο ακριβώς στα mm που ζητάμε. Το Fusion αγνοεί τις
+     μονάδες του SVG και μετράει πάντα με 96dpi, οπότε έτσι μπαίνει
+     σωστό χωρίς να το ξανακλιμακώνεις.
+   - Δεν μπαίνει άσπρο φόντο, μόνο τα μαύρα τετράγωνα και το εξωτερικό
+     περίγραμμα της πλάκας. */
+function qrSvgForCad(text, mm) {
+  const modules = qrEncode(text);
+  if (!modules) return null;
+  const n = modules.length, q = 4, total = n + 2 * q;
+
+  /* Πρώτα οριζόντιες σειρές από συνεχόμενα μαύρα, μετά ένωση προς τα κάτω
+     όταν η σειρά από πάνω πιάνει ακριβώς τις ίδιες στήλες. */
+  const rects = [];
+  const open = new Map();
+  for (let y = 0; y < n; y++) {
+    let x = 0;
+    while (x < n) {
+      if (!modules[y][x]) { x++; continue; }
+      let x2 = x;
+      while (x2 + 1 < n && modules[y][x2 + 1]) x2++;
+      const key = x + ":" + x2;
+      const prev = open.get(key);
+      if (prev && prev.y + prev.h === y) prev.h++;
+      else { const r = { x, y, w: x2 - x + 1, h: 1 }; rects.push(r); open.set(key, r); }
+      x = x2 + 1;
+    }
+  }
+
+  const px = (mm / total) * (96 / 25.4);
+  const f = (v) => +(v * px).toFixed(4);
+  let d = "";
+  for (const r of rects) {
+    const x1 = f(r.x + q), y1 = f(r.y + q), x2 = f(r.x + q + r.w), y2 = f(r.y + q + r.h);
+    d += `M${x1} ${y1}H${x2}V${y2}H${x1}Z`;
+  }
+  const side = f(total);
+  const label = String(text).replace(/[<>&]/g, "").replace(/-+/g, "-");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!-- ${label} | ${mm} mm x ${mm} mm | 1 module = ${(mm / total).toFixed(3)} mm -->
+<svg xmlns="http://www.w3.org/2000/svg" width="${mm}mm" height="${mm}mm" viewBox="0 0 ${side} ${side}">
+  <path d="${d}" fill="#000000"/>
+  <rect x="0" y="0" width="${side}" height="${side}" fill="none" stroke="#000000" stroke-width="0.2"/>
+</svg>
+`;
+}
+
+function downloadFile(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 /* Η διεύθυνση της εφαρμογής πελατών είναι αυτή εδώ η σελίδα, με
    index.html στη θέση του admin.html. Τη γεμίζουμε μόνοι μας αντί να
    περιμένουμε να τη γράψει κάποιος — έμενε κενή και τα QR έβγαιναν
@@ -2001,6 +1924,7 @@ function Access({ flash, onAuthFail }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [guessed, setGuessed] = useState(false);
+  const [mm, setMm] = useState("40");
 
   useEffect(() => {
     (async () => {
@@ -2031,6 +1955,13 @@ function Access({ flash, onAuthFail }) {
     catch (e) { flash("Η αντιγραφή δεν είναι διαθέσιμη"); }
   };
 
+  const saveSvg = (text, name) => {
+    const size = Math.min(300, Math.max(10, Number(mm) || 40));
+    const svg = qrSvgForCad(text, size);
+    if (!svg) { flash("Ο σύνδεσμος είναι πολύ μεγάλος για QR"); return; }
+    downloadFile(name, svg, "image/svg+xml");
+  };
+
   if (loading) return <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>;
   const checkinUrl = url ? url + (url.includes("?") ? "&" : "?") + "checkin=1" : "";
 
@@ -2059,20 +1990,44 @@ function Access({ flash, onAuthFail }) {
       </div>
 
       {url ? (
+        <>
         <div className="mt-8 grid max-w-3xl gap-6 sm:grid-cols-2">
           <div className="border-2 border-black p-5">
             <div className="f-display text-[14px] font-bold uppercase tracking-wide">Άνοιγμα εφαρμογής</div>
             <div className="f-mono mt-1 break-all text-[12px] text-neutral-500">{url}</div>
             <div className="mt-4 flex justify-center border-2 border-black p-3"><QRCode text={url} size={170} /></div>
-            <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => copy(url)}>Αντιγραφή</Button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={() => copy(url)}>Αντιγραφή</Button>
+              <Button variant="outline" size="sm" onClick={() => saveSvg(url, "qr-app.svg")}>SVG</Button>
+            </div>
           </div>
           <div className="border-2 border-black p-5">
             <div className="f-display text-[14px] font-bold uppercase tracking-wide">Check-in στην είσοδο</div>
             <div className="f-mono mt-1 break-all text-[12px] text-neutral-500">{checkinUrl}</div>
             <div className="mt-4 flex justify-center border-2 border-black p-3"><QRCode text={checkinUrl} size={170} /></div>
-            <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => copy(checkinUrl)}>Αντιγραφή</Button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={() => copy(checkinUrl)}>Αντιγραφή</Button>
+              <Button variant="outline" size="sm" onClick={() => saveSvg(checkinUrl, "qr-checkin.svg")}>SVG</Button>
+            </div>
           </div>
         </div>
+
+        <div className="mt-6 max-w-3xl border-2 border-black p-5">
+          <div className="f-display text-[14px] font-bold uppercase tracking-wide">SVG για 3D εκτύπωση</div>
+          <div className="mt-3 flex items-center gap-3">
+            <label className="f-text text-[13px] text-neutral-500">Πλευρά πλάκας</label>
+            <input value={mm} onChange={(e) => setMm(e.target.value)} inputMode="decimal"
+              className="f-mono h-9 w-20 border-2 border-black px-2 text-[13px] outline-none" />
+            <span className="f-text text-[13px] text-neutral-500">mm</span>
+          </div>
+          <p className="f-text mt-3 max-w-[52ch] text-[13px] leading-relaxed text-neutral-500">
+            Το SVG βγαίνει στο μέγεθος που γράφεις εδώ, οπότε στο Fusion μπαίνει με
+            Insert SVG και δεν θέλει ξανά κλιμάκωση. Μέσα έχει τα μαύρα τετράγωνα και
+            το περίγραμμα της πλάκας — στο Extrude διάλεξε τα τετράγωνα και ξεδιάλεξε
+            τη γύρω περιοχή.
+          </p>
+        </div>
+        </>
       ) : (
         <p className="f-text mt-8 text-[14px] text-neutral-500">
           Συμπλήρωσε τη διεύθυνση πιο πάνω και πάτα Αποθήκευση για να δημιουργηθούν τα QR.
