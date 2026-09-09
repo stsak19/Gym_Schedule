@@ -159,6 +159,10 @@ let GYM_NAME = "Γυμναστήριο";
 let MAX_DAYS_AHEAD = 14;
 let CHECKIN_BEFORE_MIN = 10;
 let CHECKIN_AFTER_MIN = 30;
+/* Το λογότυπο του γυμναστηρίου, όπως το ανέβασε ο διαχειριστής. Έρχεται
+   με τις ίδιες ρυθμίσεις, ως data URL — κενό σημαίνει «χωρίς λογότυπο»
+   και τότε δεν δείχνουμε κουτί ούτε κενό τετράγωνο. */
+let GYM_LOGO = "";
 const SESSION_KEY = "kinesis_session";
 const THEME_KEY = "kinesis_theme";
 
@@ -975,16 +979,8 @@ function SignIn({ onLogin, flash }) {
   };
 
   return (
-    /* Η οθόνη σύνδεσης κυλάει: με ανοιχτή τη φόρμα νέου πελάτη το
-       περιεχόμενο ξεπερνάει το ύψος της οθόνης και το κουμπί
-       «Δημιουργία» έμενε απ' έξω. Το min-h-full κρατάει τη φόρμα
-       κάτω όσο χωράει και μεγαλώνει μόνο όταν χρειάζεται. */
-    <div className="h-full overflow-y-auto">
-    <div className="mx-auto flex min-h-full max-w-md flex-col justify-between px-6"
-      style={{
-        paddingTop: "calc(env(safe-area-inset-top) + 24px)",
-        paddingBottom: "calc(env(safe-area-inset-bottom) + 40px)",
-      }}>
+    <div className="mx-auto flex h-full max-w-md flex-col justify-between overflow-hidden px-6 pb-20"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}>
       <div>
         <div className="f-display text-[13px] font-bold uppercase tracking-[0.18em] text-neutral-400">{GYM_NAME}</div>
         <div className="mt-5"><ScoreboardClock /></div>
@@ -1082,7 +1078,6 @@ function SignIn({ onLogin, flash }) {
       </div>
 
       {policy && <PrivacyPolicy onClose={() => setPolicy(false)} />}
-    </div>
     </div>
   );
 }
@@ -1741,7 +1736,11 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("checkin") === "1") setTab("checkin");
+      /* Το tag της εισόδου στέλνει checkin=1. Η κάρτα ενός πελάτη
+         κουβαλάει το δικό της κλειδί (card=…) — αν την ακουμπήσει με
+         το κινητό του, ανοίγει κι αυτή εδώ. Ποιος περνάει το κρίνει η
+         σύνδεση, όχι το κλειδί της κάρτας. */
+      if (params.get("checkin") === "1" || params.get("card")) setTab("checkin");
     } catch (e) { /* ignore */ }
   }, []);
 
@@ -1815,9 +1814,12 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     <div className="mx-auto flex h-full max-w-md flex-col overflow-hidden">
       <header className="shrink-0 flex items-center justify-between border-b border-black bg-white px-5 pb-4"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 16px)" }}>
-        <div>
-          <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{GYM_NAME}</div>
-          <div className="f-text mt-1 text-[17px]">{session.firstName} {session.lastName}</div>
+        <div className="flex min-w-0 items-center gap-3">
+          {GYM_LOGO && <img src={GYM_LOGO} alt="" className="h-11 w-11 shrink-0 object-contain" />}
+          <div className="min-w-0">
+            <div className="f-display truncate text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{GYM_NAME}</div>
+            <div className="f-text mt-1 truncate text-[17px]">{session.firstName}</div>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button onClick={() => setScanOpen(true)} aria-label="Σάρωση QR"
@@ -1998,6 +2000,7 @@ function BookTab({ session, flash }) {
 
       <div className="shrink-0 border-b border-black px-5 pt-4 pb-3">
         <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
+        <p className="f-text mt-1 text-[13px] text-neutral-500">Διαθέσιμες ώρες και θέσεις που μένουν</p>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -2281,6 +2284,7 @@ function CheckinTab({ session, flash }) {
   /* Ποιας κράτησης το κουμπί δουλεύει αυτή τη στιγμή — μπορεί να
      υπάρχουν πάνω από μία την ίδια μέρα. */
   const [busy, setBusy] = useState(null);
+  const [walkBusy, setWalkBusy] = useState(false);
   /* Η ώρα περνάει όσο η οθόνη είναι ανοιχτή, οπότε το κουμπί πρέπει να
      ανοίγει και να κλείνει μόνο του — χωρίς ανανέωση της σελίδας. */
   const [now, setNow] = useState(() => new Date());
@@ -2309,6 +2313,26 @@ function CheckinTab({ session, flash }) {
     .filter((b) => b.date === today)
     .slice()
     .sort((a, b) => a.time.localeCompare(b.time));
+
+  /* Υπάρχει αυτή τη στιγμή κράτηση που δέχεται check-in; Αν ναι, το
+     κουμπί «χωρίς κράτηση» δεν χρειάζεται και μπερδεύει. */
+  const anyOpen = todays.some((b) => {
+    if (b.status !== "booked") return false;
+    const start = slotDate(b.date, b.time);
+    return now >= addMin(start, -CHECKIN_BEFORE_MIN) && now <= addMin(start, CHECKIN_AFTER_MIN);
+  });
+
+  /* Ήρθε χωρίς κράτηση. Η βάση κοιτάζει πρώτα αν υπάρχει ανοιχτή
+     κράτηση και μόνο αν δεν βρει γράφει πέρασμα στην τρέχουσα ώρα, με
+     σημάδι ότι ήταν χωρίς κράτηση. */
+  const doWalkIn = async () => {
+    setWalkBusy(true);
+    const { data: d, error } = await sb.rpc("check_in", { p_client_id: session.clientId, p_booking_id: null });
+    setWalkBusy(false);
+    if (error || !d?.ok) { flash(d?.error || "Κάτι πήγε στραβά"); return; }
+    flash(d.kind === "already" ? "Έχεις ήδη περάσει" : "Καλή προπόνηση");
+    load();
+  };
 
   const doCheckin = async (bookingId) => {
     setBusy(bookingId);
@@ -2379,6 +2403,17 @@ function CheckinTab({ session, flash }) {
           })}
         </div>
       )}
+
+      {!loading && !anyOpen && (
+        <div className="mt-4 border border-dashed border-neutral-300 p-5 text-center">
+          <div className="f-text text-[14px] leading-relaxed text-neutral-500">
+            Ήρθες χωρίς κράτηση; Πέρνα κατευθείαν — το πέρασμα καταγράφεται κανονικά.
+          </div>
+          <Button variant="outline" className="mt-4" disabled={walkBusy} onClick={doWalkIn}>
+            {walkBusy ? "…" : "Check-in χωρίς κράτηση"}
+          </Button>
+        </div>
+      )}
       <div className="h-10" />
     </div>
   );
@@ -2433,6 +2468,7 @@ async function loadAppSettings() {
   const data = await Promise.race([call, timeout]);
   if (!data) return;
   if (data.gym_name) GYM_NAME = data.gym_name;
+  if (data.logo_url) GYM_LOGO = data.logo_url;
   if (data.max_days_ahead) MAX_DAYS_AHEAD = data.max_days_ahead;
   if (data.checkin_before_min) CHECKIN_BEFORE_MIN = data.checkin_before_min;
   if (data.checkin_after_min) CHECKIN_AFTER_MIN = data.checkin_after_min;
@@ -2444,8 +2480,25 @@ function applyBrandToPage() {
   document.title = GYM_NAME;
   const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
   if (meta) meta.setAttribute("content", GYM_NAME);
+  applyLogoToPage();
   applyBrandToManifest();
   tellServiceWorker();
+}
+
+/* Η εικόνα στην καρτέλα του browser. Το apple-touch-icon δεν το
+   αγγίζουμε: το iOS θέλει κανονικό αρχείο για το εικονίδιο της
+   αρχικής οθόνης και με data URL θα έβγαζε στιγμιότυπο της οθόνης
+   αντί για λογότυπο. Αυτά τα PNG τα ανεβάζει ο διαχειριστής στο repo,
+   έτοιμα από τις ρυθμίσεις. */
+function applyLogoToPage() {
+  if (!GYM_LOGO) return;
+  let el = document.querySelector('link[rel="icon"]');
+  if (!el) {
+    el = document.createElement("link");
+    el.rel = "icon";
+    document.head.appendChild(el);
+  }
+  el.href = GYM_LOGO;
 }
 
 /* Οι push ειδοποιήσεις τις δείχνει ο service worker, που δεν βλέπει
@@ -2475,6 +2528,11 @@ async function applyBrandToManifest() {
     if (m.start_url) m.start_url = abs(m.start_url);
     if (m.scope) m.scope = abs(m.scope);
     for (const i of m.icons || []) i.src = abs(i.src);
+    /* Το λογότυπο μπαίνει πρώτο· αν ο browser δεν δεχτεί data URL,
+       πέφτει μόνος του στα PNG που ακολουθούν. */
+    if (GYM_LOGO) {
+      m.icons = [{ src: GYM_LOGO, sizes: "512x512", type: "image/png" }].concat(m.icons || []);
+    }
     for (const sc of m.shortcuts || []) {
       if (sc.url) sc.url = abs(sc.url);
       for (const i of sc.icons || []) i.src = abs(i.src);

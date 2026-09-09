@@ -81,6 +81,15 @@ html, body { margin: 0; background: #fff; }
       (t === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.setAttribute("data-theme", d ? "dark" : "light");
   } catch (e) {}
+
+  /* Το μέγεθος της σελίδας. Κάθε υπολογιστής έχει δική του κλίμακα
+     οθόνης και δικό του ζουμ στον browser, οπότε αλλού όλα φαίνονται
+     κανονικά και αλλού τεράστια. Η επιλογή μένει στη συσκευή και
+     μπαίνει εδώ, πριν το πρώτο σχεδίασμα, για να μην αναπηδήσει. */
+  try {
+    var z = parseFloat(localStorage.getItem("kinesis_admin_scale"));
+    if (z >= 0.7 && z <= 1.3 && z !== 1) document.documentElement.style.zoom = String(z);
+  } catch (e) {}
 </script>
 </head>
 <body>
@@ -152,6 +161,67 @@ function useGymName() {
     return () => { brandSubs.delete(setName); };
   }, []);
   return name;
+}
+
+/* ---------- Λογότυπο ----------
+   Το ανεβάζει ο διαχειριστής στις ρυθμίσεις. Ζει μέσα στη βάση ως
+   data URL, οπότε δεν χρειάζεται να ανέβει αρχείο πουθενά. Φαίνεται
+   στην καρτέλα του browser και δίπλα στο όνομα του γυμναστηρίου. */
+let LOGO_URL = "";
+const logoSubs = new Set();
+
+function setLinkIcon(rel, href) {
+  let el = document.querySelector('link[rel="' + rel + '"]');
+  if (!href) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("link"); el.rel = rel; document.head.appendChild(el); }
+  el.href = href;
+}
+
+function setLogoUrl(url) {
+  const clean = url || "";
+  if (clean === LOGO_URL) return;
+  LOGO_URL = clean;
+  setLinkIcon("icon", LOGO_URL);
+  setLinkIcon("apple-touch-icon", LOGO_URL);
+  logoSubs.forEach((fn) => fn(LOGO_URL));
+}
+
+function useLogo() {
+  const [url, setUrl] = useState(LOGO_URL);
+  useEffect(() => {
+    logoSubs.add(setUrl);
+    setUrl(LOGO_URL);
+    return () => { logoSubs.delete(setUrl); };
+  }, []);
+  return url;
+}
+
+function Logo({ size = 34, className = "" }) {
+  const url = useLogo();
+  if (!url) return null;
+  return (
+    <img src={url} alt="" style={{ width: size, height: size }}
+      className={"shrink-0 object-contain " + className} />
+  );
+}
+
+/* ---------- Μέγεθος σελίδας ----------
+   Δεν φταίει η σελίδα όταν σε κάποιον υπολογιστή όλα δείχνουν
+   μεγαλύτερα: φταίει η κλίμακα των Windows (125%, 150%) και το ζουμ
+   του browser, που η σελίδα δεν μπορεί ούτε να τα δει ούτε να τα
+   αλλάξει. Αυτό είναι το χειροκίνητο αντίβαρο, ανά συσκευή. */
+const SCALE_KEY = "kinesis_admin_scale";
+const SCALES = [[0.85, "Μικρό"], [1, "Κανονικό"], [1.15, "Μεγάλο"]];
+
+function readScale() {
+  try {
+    const v = parseFloat(localStorage.getItem(SCALE_KEY));
+    return v >= 0.7 && v <= 1.3 ? v : 1;
+  } catch (e) { return 1; }
+}
+
+function applyScale(v) {
+  document.documentElement.style.zoom = v === 1 ? "" : String(v);
 }
 
 /* ---------- Πόσες μέρες μπροστά ----------
@@ -788,6 +858,7 @@ function Toast({ msg }) {
 /* ---------- Root ---------- */
 const TABS = [
   ["schedule", "Πρόγραμμα"],
+  ["station", "Είσοδος"],
   ["hours", "Χωρητικότητα"],
   ["people", "Πελάτες"],
   ["goals", "Στόχοι πελατών"],
@@ -802,7 +873,8 @@ function App() {
   const [checking, setChecking] = useState(hasSession);
   const [tab, setTab] = useState("schedule");
   const [toast, setToast] = useState("");
-  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 900);
+  const [scale, setScale] = useState(readScale);
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth / readScale() >= 900);
   const [theme, setTheme] = useState(readTheme);
   const brand = useGymName();
 
@@ -818,11 +890,21 @@ function App() {
     return () => mq.removeEventListener("change", onChange);
   }, [theme]);
 
+  /* Το zoom αλλάζει πόσο πλάτος έχει πραγματικά η σελίδα, αλλά το
+     innerWidth μένει το ίδιο — γι' αυτό διαιρείται. Χωρίς αυτό, με
+     μεγάλο ζουμ ο υπολογιστής έπεφτε στη διάταξη του κινητού και όλα
+     έμοιαζαν φουσκωμένα. */
   useEffect(() => {
-    const onResize = () => setIsDesktop(window.innerWidth >= 900);
+    applyScale(scale);
+    try { localStorage.setItem(SCALE_KEY, String(scale)); } catch (e) { /* αγνόησε */ }
+    setIsDesktop(window.innerWidth / scale >= 900);
+  }, [scale]);
+
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth / scale >= 900);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [scale]);
 
   // Saved token may be expired — verify it before trusting it.
   useEffect(() => {
@@ -910,13 +992,15 @@ function App() {
           focus={focus} onSeen={watch.dismiss}
           seenDays={seenDays} onDaySeen={markDaySeen} />
       )}
+      {tab === "station" && <Station {...props} />}
       {tab === "hours" && <Hours {...props} />}
       {tab === "people" && <People {...props} />}
       {tab === "goals" && <Goals {...props} />}
       {tab === "stats" && <Stats {...props} />}
       {tab === "access" && <Access {...props} />}
       {tab === "newsletter" && <Newsletter {...props} />}
-      {tab === "settings" && <Settings {...props} watchError={watch.error} theme={theme} setTheme={setTheme} />}
+      {tab === "settings" && <Settings {...props} watchError={watch.error} theme={theme} setTheme={setTheme}
+        scale={scale} setScale={setScale} />}
     </React.Fragment>
   );
 
@@ -927,9 +1011,12 @@ function App() {
             όσο κυλάει το περιεχόμενο από κάτω. */}
         <div className="sticky top-0 z-40 bg-white">
           <header className="flex items-center justify-between border-b-2 border-black px-5 pb-4 pt-6">
-            <div>
-              <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
-              <div className="f-display mt-1 text-[19px] font-extrabold uppercase">Διαχείριση</div>
+            <div className="flex min-w-0 items-center gap-3">
+              <Logo size={38} />
+              <div className="min-w-0">
+                <div className="f-display truncate text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
+                <div className="f-display mt-1 text-[19px] font-extrabold uppercase">Διαχείριση</div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <SoundSwitch on={sound} onToggle={toggleSound} />
@@ -962,6 +1049,7 @@ function App() {
         <main className="min-w-0 flex-1 pb-16">{content}</main>
 
         <aside className="flex w-[230px] shrink-0 flex-col border-l-2 border-black px-5 py-7">
+          <Logo size={44} className="mb-3" />
           <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
           <div className="f-display mt-1 text-[21px] font-extrabold uppercase tracking-tight">Διαχείριση</div>
           <div className="mt-4 flex items-center gap-2">
@@ -1254,6 +1342,11 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                               <div className="flex items-center gap-2">
                                 {fresh.ids.has(p.booking_id) && <Dot />}
                                 <span className="f-text truncate text-[15px]">{p.name}</span>
+                                {p.walk_in && (
+                                  <span className="f-display shrink-0 border border-neutral-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                                    χωρίς κράτηση
+                                  </span>
+                                )}
                               </div>
                               <div className="f-mono text-[12px] text-neutral-500">{p.phone}</div>
                             </div>
@@ -1561,6 +1654,335 @@ function HourRow({ slot, scope, onSave }) {
   );
 }
 
+/* ---------- Σταθμός εισόδου και κάρτες ----------
+   Η ταυτότητα του πελάτη είναι ένα τυχαίο κλειδί (card_token) που
+   γράφεται πάνω στην κάρτα ως σύνδεσμος «…?card=ΚΛΕΙΔΙ». Έτσι η ίδια
+   κάρτα δουλεύει και στα δύο: ο σταθμός της εισόδου τη διαβάζει και
+   περνάει τον πελάτη, και το κινητό του ίδιου του πελάτη, αν την
+   ακουμπήσει, ανοίγει την εφαρμογή στο check-in.
+
+   Το NFC από ιστοσελίδα το διαβάζει μόνο το Chrome σε Android. Το
+   iPhone δεν το επιτρέπει, γι' αυτό υπάρχει και η αναζήτηση με όνομα
+   — δουλεύει παντού και καλύπτει και όποιον ξέχασε την κάρτα του. */
+const NFC_OK = typeof window !== "undefined" && "NDEFReader" in window;
+
+function tokenFromText(text) {
+  const s = (text || "").trim();
+  const inUrl = s.match(/[?&]card=([A-Za-z0-9]+)/);
+  if (inUrl) return inUrl[1].toUpperCase();
+  const bare = s.match(/K[0-9A-Fa-f]{18}/);
+  return bare ? bare[0].toUpperCase() : "";
+}
+
+function tokenFromMessage(message) {
+  const dec = new TextDecoder();
+  for (const rec of (message && message.records) || []) {
+    if (rec.recordType !== "url" && rec.recordType !== "absolute-url" && rec.recordType !== "text") continue;
+    let text = "";
+    try { text = dec.decode(rec.data); } catch (e) { continue; }
+    const t = tokenFromText(text);
+    if (t) return t;
+  }
+  return "";
+}
+
+const KIND_LABEL = {
+  booking: "Είχε κράτηση",
+  walkin: "Χωρίς κράτηση",
+  already: "Είχε ήδη περάσει",
+};
+
+function Station({ flash, onAuthFail }) {
+  const [scanning, setScanning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [log, setLog] = useState([]);
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const abortRef = useRef(null);
+  const timerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (abortRef.current) abortRef.current.abort();
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  /* Το αποτέλεσμα μένει λίγο και σβήνει μόνο του, ώστε η οθόνη να
+     είναι πάντα έτοιμη για τον επόμενο. */
+  const show = useCallback((r) => {
+    setResult(r);
+    chime(true, !r.ok);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setResult(null), 8000);
+  }, []);
+
+  const pass = useCallback(async (args) => {
+    setBusy(true);
+    const { data, error } = await rpc("admin_check_in_tag", args);
+    setBusy(false);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data) { show({ ok: false, error: "Δεν πέρασε — δες τη σύνδεση" }); return; }
+    show(data);
+    if (data.ok) {
+      setLog((prev) => [{ name: data.name, kind: data.kind, time: data.time, at: new Date() }, ...prev].slice(0, 8));
+    }
+  }, [onAuthFail, show]);
+
+  const start = async () => {
+    if (!NFC_OK) return;
+    try {
+      const reader = new NDEFReader();
+      const ac = new AbortController();
+      abortRef.current = ac;
+      reader.onreading = (e) => {
+        const token = tokenFromMessage(e.message);
+        if (!token) { show({ ok: false, error: "Η κάρτα δεν είναι της εφαρμογής" }); return; }
+        pass({ p_token: token, p_client_id: null });
+      };
+      reader.onreadingerror = () => show({ ok: false, error: "Δεν διαβάστηκε η κάρτα" });
+      await reader.scan({ signal: ac.signal });
+      setScanning(true);
+      /* Το πάτημα είναι και η χειρονομία που ξεκλειδώνει τον ήχο. */
+      wakeAudio();
+    } catch (e) {
+      flash("Δεν ξεκίνησε η ανάγνωση: " + (e.message || e));
+    }
+  };
+
+  const stop = () => {
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
+    setScanning(false);
+  };
+
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) { setRows([]); return; }
+    const t = setTimeout(async () => {
+      const { data, error } = await rpc("admin_clients", { p_search: term });
+      if (error === "AUTH") { onAuthFail(); return; }
+      setRows((data || []).slice(0, 8));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, onAuthFail]);
+
+  return (
+    <div className="px-5 sm:px-6">
+      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Είσοδος</h2>
+      <p className="f-text mt-1 max-w-[54ch] text-[13px] leading-relaxed text-neutral-500">
+        Άφησε αυτή την οθόνη ανοιχτή στη συσκευή της εισόδου. Κάθε κάρτα που ακουμπάει
+        περνάει τον πελάτη — με κράτηση ή χωρίς.
+      </p>
+
+      <div className="mt-6 border-2 border-black">
+        {result ? (
+          <div className={`px-5 py-8 text-center ${result.ok ? "bg-black text-white" : "bg-white"}`}>
+            {result.ok ? (
+              <>
+                <div className="f-display text-[30px] font-extrabold uppercase leading-none tracking-tight">
+                  {result.first_name || result.name}
+                </div>
+                <div className="f-text mt-2 text-[15px] opacity-80">
+                  {KIND_LABEL[result.kind] || "Πέρασε"}{result.time ? " · " + result.time : ""}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="f-display text-[24px] font-extrabold uppercase leading-none tracking-tight">Στοπ</div>
+                <div className="f-text mt-2 text-[15px] text-neutral-600">{result.error || "Κάτι πήγε στραβά"}</div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="px-5 py-10 text-center">
+            <div className="f-display text-[22px] font-extrabold uppercase leading-none tracking-tight">
+              {busy ? "…" : scanning ? "Ακούμπησε την κάρτα" : "Ο σταθμός είναι κλειστός"}
+            </div>
+            <div className="f-text mt-2 text-[13px] text-neutral-500">
+              {scanning ? "Η οθόνη πρέπει να μένει ανοιχτή και ξεκλείδωτη." : "Πάτα «Έναρξη» για να αρχίσει η ανάγνωση."}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {NFC_OK ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {!scanning
+            ? <Button onClick={start}>Έναρξη ανάγνωσης</Button>
+            : <Button variant="outline" onClick={stop}>Παύση</Button>}
+        </div>
+      ) : (
+        <p className="f-text mt-4 max-w-[54ch] border-2 border-dashed border-neutral-300 p-4 text-[13px] leading-relaxed text-neutral-600">
+          Αυτή η συσκευή δεν διαβάζει NFC από ιστοσελίδα. Χρειάζεται κινητό ή tablet
+          <strong> Android με Chrome</strong>. Το iPhone δεν το επιτρέπει. Μέχρι τότε, πέρνα τους
+          πελάτες με το όνομά τους πιο κάτω.
+        </p>
+      )}
+
+      <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Χωρίς κάρτα</h3>
+      <div className="border-t-2 border-black pt-4">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Αναζήτηση με όνομα"
+          className="f-text h-12 w-full max-w-md border-2 border-black px-4 text-[15px] outline-none" />
+        {rows.length > 0 && (
+          <div className="mt-3 max-w-md divide-y divide-neutral-200 border-2 border-black">
+            {rows.map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="f-text truncate text-[15px]">{r.name}</div>
+                  <div className="f-mono text-[12px] text-neutral-500">{r.phone}</div>
+                </div>
+                <Button size="sm" disabled={busy}
+                  onClick={() => pass({ p_token: null, p_client_id: r.id })}>Πέρασέ τον</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {log.length > 0 && (
+        <>
+          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πέρασαν τώρα</h3>
+          <div className="divide-y divide-neutral-200 border-t-2 border-black">
+            {log.map((l, i) => (
+              <div key={i} className="flex items-center justify-between gap-3 py-3">
+                <span className="f-text truncate text-[15px]">{l.name}</span>
+                <span className="f-mono shrink-0 text-[12px] text-neutral-500">
+                  {KIND_LABEL[l.kind] || ""} · {String(l.at.getHours()).padStart(2, "0")}:{String(l.at.getMinutes()).padStart(2, "0")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="h-10" />
+    </div>
+  );
+}
+
+/* ---------- Η κάρτα ενός πελάτη ----------
+   Το κλειδί βγαίνει από τη βάση και γράφεται στην κάρτα με Web NFC —
+   πάλι μόνο από Android με Chrome. Το «νέο κλειδί» ακυρώνει αμέσως
+   την παλιά κάρτα, για χαμένες κάρτες. */
+function CardPanel({ client, flash, onAuthFail, onChanged }) {
+  const [token, setToken] = useState("");
+  const [has, setHas] = useState(!!client.has_card);
+  const [busy, setBusy] = useState("");
+  const [site, setSite] = useState("");
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await rpc("admin_get_settings", {});
+      if (!alive) return;
+      setSite((((data && data.site_url) || "").trim()) || guessAppUrl());
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const cardUrl = token && site ? site + (site.includes("?") ? "&" : "?") + "card=" + token : "";
+
+  const issue = async (rotate) => {
+    setBusy(rotate ? "new" : "issue");
+    const { data, error } = await rpc("admin_issue_card", { p_client_id: client.id, p_new: !!rotate });
+    setBusy("");
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { flash((data && data.error) || "Δεν βγήκε κάρτα"); return; }
+    setToken(data.token);
+    setHas(true);
+    if (rotate) flash("Νέο κλειδί — η παλιά κάρτα δεν δουλεύει πια");
+    if (onChanged) onChanged();
+  };
+
+  const write = async () => {
+    if (!cardUrl) return;
+    setBusy("write");
+    try {
+      const w = new NDEFReader();
+      await w.write({ records: [{ recordType: "url", data: cardUrl }] });
+      flash("Η κάρτα γράφτηκε");
+    } catch (e) {
+      flash("Δεν γράφτηκε: " + (e.message || e));
+    }
+    setBusy("");
+  };
+
+  const revoke = async () => {
+    setBusy("revoke");
+    const { data, error } = await rpc("admin_revoke_card", { p_client_id: client.id });
+    setBusy("");
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { flash("Δεν ακυρώθηκε"); return; }
+    setToken(""); setHas(false); setConfirmRevoke(false);
+    flash("Η κάρτα ακυρώθηκε");
+    if (onChanged) onChanged();
+  };
+
+  return (
+    <div className="mt-12 border-t-2 border-black pt-6">
+      <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">Κάρτα εισόδου</h3>
+
+      {!token ? (
+        <>
+          <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+            {has
+              ? "Ο πελάτης έχει κάρτα. Άνοιξέ τη για να τη γράψεις σε καινούριο αυτοκόλλητο ή για να βγάλεις νέο κλειδί."
+              : "Δώσε στον πελάτη κάρτα NFC. Ακουμπάει στη συσκευή της εισόδου και περνάει, με κράτηση ή χωρίς."}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="outline" disabled={!!busy} onClick={() => issue(false)}>
+              {busy === "issue" ? "…" : has ? "Άνοιγμα κάρτας" : "Έκδοση κάρτας"}
+            </Button>
+            {has && !confirmRevoke && (
+              <Button variant="ghost" onClick={() => setConfirmRevoke(true)}>Ακύρωση κάρτας</Button>
+            )}
+          </div>
+          {confirmRevoke && (
+            <div className="mt-3 border-2 border-black p-4">
+              <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
+                Η κάρτα του/της <strong>{client.name}</strong> παύει να δουλεύει αμέσως.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button disabled={!!busy} onClick={revoke}>{busy === "revoke" ? "…" : "Ναι, ακύρωσέ τη"}</Button>
+                <Button variant="ghost" onClick={() => setConfirmRevoke(false)}>Άκυρο</Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mt-3 border-2 border-black p-4">
+          <div className="f-display text-[11px] font-bold uppercase tracking-wide text-neutral-500">Κλειδί κάρτας</div>
+          <div className="f-mono mt-1 break-all text-[15px]">{token}</div>
+          <div className="f-mono mt-3 break-all text-[12px] text-neutral-500">{cardUrl}</div>
+
+          {NFC_OK ? (
+            <>
+              <Button className="mt-4" disabled={!!busy} onClick={write}>
+                {busy === "write" ? "Ακούμπησε την κάρτα…" : "Γράψιμο στην κάρτα"}
+              </Button>
+              <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+                Πάτα το κουμπί και ακούμπησε την άγραφη κάρτα στην πλάτη του κινητού.
+              </p>
+            </>
+          ) : (
+            <p className="f-text mt-4 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
+              Το γράψιμο κάρτας θέλει Android με Chrome. Άνοιξε τη σελίδα διαχείρισης από εκεί
+              και ξαναμπές στην καρτέλα του πελάτη.
+            </p>
+          )}
+
+          <div className="mt-5 flex flex-wrap gap-2 border-t border-neutral-300 pt-4">
+            <Button variant="ghost" disabled={!!busy} onClick={() => issue(true)}>
+              {busy === "new" ? "…" : "Νέο κλειδί (χάθηκε η κάρτα)"}
+            </Button>
+            <Button variant="ghost" onClick={() => setToken("")}>Κλείσιμο</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- People ---------- */
 function People({ flash, onAuthFail }) {
   const [q, setQ] = useState("");
@@ -1749,6 +2171,8 @@ function People({ flash, onAuthFail }) {
           </div>
         )}
 
+        <CardPanel client={sel} flash={flash} onAuthFail={onAuthFail} onChanged={load} />
+
         <div className="mt-12 border-t-2 border-black pt-6">
           <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
             Κωδικός σύνδεσης
@@ -1854,6 +2278,7 @@ function People({ flash, onAuthFail }) {
               </div>
               <div className="f-mono shrink-0 text-[12px] text-neutral-500">
                 {r.total} κρατ. · {r.checkins} ci · {r.noshows} απ.
+                {r.has_card && <span className="ml-2 border border-neutral-300 px-1.5 py-0.5 text-[10px] uppercase">κάρτα</span>}
               </div>
             </button>
           ))}
@@ -1983,6 +2408,32 @@ function QRCode({ text, size = 190 }) {
    index.html στη θέση του admin.html. Τη γεμίζουμε μόνοι μας αντί να
    περιμένουμε να τη γράψει κάποιος — έμενε κενή και τα QR έβγαιναν
    με άδειο σύνδεσμο. */
+/* Το ίδιο QR ως αρχείο SVG, στα 100 mm. Καθαρές γραμμές, ώστε να
+   μπει σε CAD και να τυπωθεί σε 3D. */
+function qrSvgText(text) {
+  const modules = qrEncode(text);
+  if (!modules) return "";
+  const n = modules.length, q = 4, total = n + 2 * q;
+  let d = "";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (modules[y][x]) d += `M${x + q} ${y + q}h1v1h-1z`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges">` +
+    `<rect width="${total}" height="${total}" fill="#FFFFFF"/><path d="${d}" fill="#000000"/></svg>`;
+}
+
+function downloadQrSvg(text, name) {
+  const svg = qrSvgText(text);
+  if (!svg) return;
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 4000);
+}
+
 function guessAppUrl() {
   try {
     const u = new URL(window.location.href);
@@ -2059,13 +2510,19 @@ function Access({ flash, onAuthFail }) {
             <div className="f-display text-[14px] font-bold uppercase tracking-wide">Άνοιγμα εφαρμογής</div>
             <div className="f-mono mt-1 break-all text-[12px] text-neutral-500">{url}</div>
             <div className="mt-4 flex justify-center border-2 border-black p-3"><QRCode text={url} size={170} /></div>
-            <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => copy(url)}>Αντιγραφή</Button>
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => copy(url)}>Αντιγραφή</Button>
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => downloadQrSvg(url, "qr-efarmogi.svg")}>SVG</Button>
+            </div>
           </div>
           <div className="border-2 border-black p-5">
             <div className="f-display text-[14px] font-bold uppercase tracking-wide">Check-in στην είσοδο</div>
             <div className="f-mono mt-1 break-all text-[12px] text-neutral-500">{checkinUrl}</div>
             <div className="mt-4 flex justify-center border-2 border-black p-3"><QRCode text={checkinUrl} size={170} /></div>
-            <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => copy(checkinUrl)}>Αντιγραφή</Button>
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => copy(checkinUrl)}>Αντιγραφή</Button>
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => downloadQrSvg(checkinUrl, "qr-checkin.svg")}>SVG</Button>
+            </div>
           </div>
         </div>
       ) : (
@@ -2081,6 +2538,12 @@ function Access({ flash, onAuthFail }) {
           <li>2. Γράψε πάνω του NDEF record τύπου URL με τον σύνδεσμο check-in.</li>
           <li>3. Κόλλησέ το στην είσοδο, δίπλα στο τυπωμένο QR.</li>
         </ol>
+        <p className="f-text mt-4 max-w-[54ch] text-[13px] leading-relaxed text-neutral-600">
+          Αυτό το tag είναι για τα κινητά των πελατών: το ακουμπάνε και ανοίγει η εφαρμογή στο
+          check-in. Οι <strong>κάρτες</strong> είναι άλλη ιστορία — κάθε πελάτης παίρνει τη δική
+          του από την καρτέλα του στους Πελάτες, και τη διαβάζει η καρτέλα «Είσοδος» πάνω σε
+          Android με Chrome.
+        </p>
       </div>
       <div className="h-10" />
     </div>
@@ -2296,9 +2759,91 @@ function NotifyPanel({ flash, watchError }) {
   );
 }
 
-function Settings({ flash, onAuthFail, watchError, theme, setTheme }) {
+/* ---------- Λογότυπο: μικρότερο πριν φύγει ----------
+   Ό,τι ανεβάσει ο διαχειριστής μπαίνει σε τετράγωνο καμβά και βγαίνει
+   PNG με διαφάνεια. Χωρίς αυτό, μια φωτογραφία από κινητό θα ταξίδευε
+   ολόκληρη σε κάθε άνοιγμα της εφαρμογής, από κάθε πελάτη. */
+function fileToSquarePng(file, size) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(new Error("Δεν διαβάστηκε το αρχείο"));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Δεν είναι εικόνα"));
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = size; c.height = size;
+          const ctx = c.getContext("2d");
+          const r = Math.min(size / img.width, size / img.height);
+          const w = Math.max(1, Math.round(img.width * r));
+          const h = Math.max(1, Math.round(img.height * r));
+          ctx.drawImage(img, Math.round((size - w) / 2), Math.round((size - h) / 2), w, h);
+          resolve(c.toDataURL("image/png"));
+        } catch (e) { reject(new Error("Δεν διαβάστηκε η εικόνα")); }
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+/* Δοκιμάζει από το μεγάλο προς το μικρό μέχρι να χωρέσει. */
+async function shrinkLogo(file) {
+  for (const size of [512, 384, 256, 192]) {
+    const url = await fileToSquarePng(file, size);
+    if (url.length <= 200000) return url;
+  }
+  throw new Error("Η εικόνα είναι πολύ βαριά");
+}
+
+/* Τα εικονίδια της αρχικής οθόνης είναι στατικά αρχεία στο repo και
+   δεν αλλάζουν από τη βάση. Εδώ βγαίνουν έτοιμα, με τα ονόματα που
+   ζητάει ο κώδικας, για να ανέβουν με το χέρι μία φορά. */
+function logoToIcon(url, size, pad) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error("bad"));
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = size; c.height = size;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, size, size);
+      const box = size * (1 - 2 * pad);
+      const r = Math.min(box / img.width, box / img.height);
+      const w = img.width * r, h = img.height * r;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("bad"))), "image/png");
+    };
+    img.src = url;
+  });
+}
+
+async function downloadIcons(url) {
+  const jobs = [
+    ["icon-192.png", 192, 0.08],
+    ["icon-512.png", 512, 0.08],
+    ["icon-maskable-512.png", 512, 0.2],
+  ];
+  for (const [name, size, pad] of jobs) {
+    const blob = await logoToIcon(url, size, pad);
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 4000);
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setScale }) {
   const [s, setS] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [logoBusy, setLogoBusy] = useState("");
+  const fileRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -2308,14 +2853,60 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme }) {
       setS(data);
       setGymName(data?.gym_name);
       setMaxDaysAhead(data?.max_days_ahead);
+      setLogoUrl(data?.logo_url || "");
     })();
   }, [flash, onAuthFail]);
 
   const set = (k, v) => setS((prev) => ({ ...prev, [k]: v }));
 
+  /* Το λογότυπο αποθηκεύεται μόνο του, χωρίς το κουμπί πιο κάτω: η
+     καρτέλα του browser αλλάζει την ίδια στιγμή και φαίνεται ότι
+     έπιασε. Και δεν ταξιδεύει ξανά σε κάθε άλλη αποθήκευση. */
+  const saveLogo = async (url) => {
+    const { data, error } = await rpc("admin_update_settings", { p_patch: { logo_url: url } });
+    if (error === "AUTH") { onAuthFail(); return false; }
+    if (error || !data?.ok) { flash(data?.error || "Δεν αποθηκεύτηκε το λογότυπο"); return false; }
+    set("logo_url", url);
+    setLogoUrl(url);
+    return true;
+  };
+
+  const pickLogo = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (e.target) e.target.value = "";
+    if (!file) return;
+    setLogoBusy("up");
+    try {
+      const url = await shrinkLogo(file);
+      const ok = await saveLogo(url);
+      if (ok) flash("Το λογότυπο μπήκε");
+    } catch (err) {
+      flash(err.message || "Δεν ανέβηκε η εικόνα");
+    }
+    setLogoBusy("");
+  };
+
+  const removeLogo = async () => {
+    setLogoBusy("del");
+    const ok = await saveLogo("");
+    if (ok) flash("Το λογότυπο αφαιρέθηκε");
+    setLogoBusy("");
+  };
+
+  const getIcons = async () => {
+    if (!s.logo_url) return;
+    setLogoBusy("icons");
+    try { await downloadIcons(s.logo_url); }
+    catch (err) { flash("Δεν φτιάχτηκαν τα εικονίδια"); }
+    setLogoBusy("");
+  };
+
   const save = async () => {
     setSaving(true);
-    const { data, error } = await rpc("admin_update_settings", { p_patch: s });
+    /* Το logo_url μένει έξω: είναι μεγάλο και έχει δικό του δρόμο. */
+    const patch = Object.assign({}, s);
+    delete patch.logo_url;
+    const { data, error } = await rpc("admin_update_settings", { p_patch: patch });
     setSaving(false);
     if (error === "AUTH") { onAuthFail(); return; }
     if (error || !data?.ok) { flash("Δεν αποθηκεύτηκε"); return; }
@@ -2356,6 +2947,22 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme }) {
         </div>
         <p className="f-text mt-2 text-[12px] text-neutral-500">
           Το «Αυτόματο» ακολουθεί τη ρύθμιση της συσκευής σου. Ισχύει μόνο σε αυτή τη συσκευή.
+        </p>
+
+        <div className="mt-5 flex border-2 border-black">
+          {SCALES.map(([v, label], i) => (
+            <button key={v} onClick={() => setScale(v)}
+              className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
+                i > 0 ? "border-l-2 border-black" : ""} ${
+                scale === v ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="f-text mt-2 text-[12px] leading-relaxed text-neutral-500">
+          Μέγεθος της σελίδας. Κάθε υπολογιστής έχει δική του κλίμακα οθόνης και δικό του ζουμ
+          στον browser, γι' αυτό αλλού όλα δείχνουν κανονικά και αλλού τεράστια. Ισχύει μόνο σε
+          αυτή τη συσκευή.
         </p>
       </div>
 
@@ -2406,6 +3013,47 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme }) {
       <div className="border-y-2 border-black py-4">
         <input value={s.gym_name} onChange={(e) => set("gym_name", e.target.value)}
           className="f-text h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
+      </div>
+
+      <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Λογότυπο</h3>
+      <div className="border-y-2 border-black py-4">
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="flex h-24 w-24 shrink-0 items-center justify-center border-2 border-dashed border-neutral-300">
+            {s.logo_url
+              ? <img src={s.logo_url} alt="" className="h-20 w-20 object-contain" />
+              : <span className="f-text text-[11px] text-neutral-400">κενό</span>}
+          </div>
+          <div className="min-w-0 flex-1">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickLogo} />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled={!!logoBusy}
+                onClick={() => fileRef.current && fileRef.current.click()}>
+                {logoBusy === "up" ? "Ανέβασμα…" : s.logo_url ? "Αλλαγή" : "Ανέβασμα λογότυπου"}
+              </Button>
+              {s.logo_url && (
+                <Button variant="ghost" size="sm" disabled={!!logoBusy} onClick={removeLogo}>
+                  {logoBusy === "del" ? "…" : "Αφαίρεση"}
+                </Button>
+              )}
+            </div>
+            <p className="f-text mt-3 max-w-[56ch] text-[12px] leading-relaxed text-neutral-500">
+              Τετράγωνη εικόνα, με διάφανο ή λευκό φόντο. Φαίνεται στην καρτέλα του browser,
+              εδώ, και στην εφαρμογή των πελατών αριστερά από το όνομά τους. Αποθηκεύεται
+              αμέσως, χωρίς το κουμπί πιο κάτω.
+            </p>
+            {s.logo_url && (
+              <>
+                <Button variant="ghost" size="sm" className="mt-2 -ml-3" disabled={!!logoBusy} onClick={getIcons}>
+                  {logoBusy === "icons" ? "…" : "Κατέβασμα εικονιδίων για το repo"}
+                </Button>
+                <p className="f-text mt-1 max-w-[56ch] text-[12px] leading-relaxed text-neutral-500">
+                  Το εικονίδιο που βλέπει το iPhone στην αρχική οθόνη είναι στατικό αρχείο και δεν
+                  αλλάζει από εδώ. Κατέβασε τα τρία PNG και ανέβασέ τα στο repo πάνω από τα παλιά.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="mt-8">
@@ -2613,6 +3261,7 @@ async function loadBrand() {
   if (data && data.gym_name) setGymName(data.gym_name);
   else document.title = GYM_NAME + " — Διαχείριση";
   if (data && data.max_days_ahead) setMaxDaysAhead(data.max_days_ahead);
+  if (data && data.logo_url) setLogoUrl(data.logo_url);
 }
 
 loadBrand().then(() => {
