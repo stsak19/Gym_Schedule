@@ -756,6 +756,30 @@ function NotificationsPanel({ items, error, isDesktop, onOpenItem, onDismiss, on
   );
 }
 
+/* ---------- Εικονίδια ----------
+   Γραμμένα εδώ ως SVG, χωρίς βιβλιοθήκη. Παίρνουν το χρώμα του
+   κουμπιού από το currentColor, οπότε αλλάζουν μόνα τους όταν το
+   κουμπί γίνεται μαύρο. */
+function IconDownload({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.4" strokeLinecap="square" aria-hidden="true">
+      <path d="M12 3v12" /><path d="M6.5 10.5 12 16l5.5-5.5" /><path d="M4 20h16" />
+    </svg>
+  );
+}
+
+/* Τρία «Α» σε τρία μεγέθη: το ίδιο γράμμα, όσο μεγαλώνει η κλίμακα. */
+function IconTextSize({ scale = 1 }) {
+  const h = 8 + scale * 6;
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <text x="10" y="15" textAnchor="middle" fontSize={h} fontWeight="800"
+        fill="currentColor" fontFamily="inherit">A</text>
+    </svg>
+  );
+}
+
 function Button({ children, onClick, variant = "primary", disabled, className = "", size = "md" }) {
   const base = "f-display inline-flex items-center justify-center border-2 border-black font-bold uppercase tracking-wide transition-colors select-none";
   const sizes = { md: "h-12 px-5 text-[15px]", sm: "h-9 px-3 text-[13px]", lg: "h-14 px-6 text-[17px] w-full" };
@@ -858,13 +882,13 @@ function Toast({ msg }) {
 /* ---------- Root ---------- */
 const TABS = [
   ["schedule", "Πρόγραμμα"],
-  ["station", "Είσοδος"],
   ["hours", "Χωρητικότητα"],
   ["people", "Πελάτες"],
   ["goals", "Στόχοι πελατών"],
   ["stats", "Στατιστικά"],
-  ["access", "QR & NFC"],
+  ["access", "Είσοδος, QR & NFC"],
   ["newsletter", "Ενημερώσεις"],
+  ["announce", "Ειδοποιήσεις"],
   ["settings", "Ρυθμίσεις"],
 ];
 
@@ -992,13 +1016,18 @@ function App() {
           focus={focus} onSeen={watch.dismiss}
           seenDays={seenDays} onDaySeen={markDaySeen} />
       )}
-      {tab === "station" && <Station {...props} />}
       {tab === "hours" && <Hours {...props} />}
       {tab === "people" && <People {...props} />}
       {tab === "goals" && <Goals {...props} />}
       {tab === "stats" && <Stats {...props} />}
-      {tab === "access" && <Access {...props} />}
+      {tab === "access" && (
+        <React.Fragment>
+          <Station {...props} />
+          <Access {...props} />
+        </React.Fragment>
+      )}
       {tab === "newsletter" && <Newsletter {...props} />}
+      {tab === "announce" && <Announcements {...props} />}
       {tab === "settings" && <Settings {...props} watchError={watch.error} theme={theme} setTheme={setTheme}
         scale={scale} setScale={setScale} />}
     </React.Fragment>
@@ -2482,7 +2511,7 @@ function Access({ flash, onAuthFail }) {
 
   return (
     <div className="px-5 sm:px-6">
-      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">QR & NFC στην είσοδο</h2>
+      <h2 className="f-display border-t-2 border-black pt-6 text-[24px] font-extrabold uppercase tracking-tight">QR & NFC στην είσοδο</h2>
       <p className="f-text mt-1 max-w-[52ch] text-[13px] leading-relaxed text-neutral-500">
         Τύπωσε το QR ή γράψε τον σύνδεσμο σε NFC tag. Ο πελάτης το σκανάρει ή ακουμπάει το κινητό
         και ανοίγει η εφαρμογή. Δεν χρειάζεται εγκατάσταση.
@@ -2935,34 +2964,34 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
 
       <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Εμφάνιση</h3>
       <div className="border-y-2 border-black py-4">
-        <div className="flex border-2 border-black">
-          {[["light", "Φωτεινό"], ["dark", "Σκούρο"], ["auto", "Αυτόματο"]].map(([k, label], i) => (
-            <button key={k} onClick={() => setTheme(k)}
-              className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
-                i > 0 ? "border-l-2 border-black" : ""} ${
-                theme === k ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="f-text mt-2 text-[12px] text-neutral-500">
-          Το «Αυτόματο» ακολουθεί τη ρύθμιση της συσκευής σου. Ισχύει μόνο σε αυτή τη συσκευή.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex border-2 border-black">
+            {[["light", "Φωτεινό"], ["dark", "Σκούρο"], ["auto", "Αυτόματο"]].map(([k, label], i) => (
+              <button key={k} onClick={() => setTheme(k)}
+                className={`f-display h-9 px-3 text-[11px] font-bold uppercase tracking-wide ${
+                  i > 0 ? "border-l-2 border-black" : ""} ${
+                  theme === k ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
 
-        <div className="mt-5 flex border-2 border-black">
-          {SCALES.map(([v, label], i) => (
-            <button key={v} onClick={() => setScale(v)}
-              className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
-                i > 0 ? "border-l-2 border-black" : ""} ${
-                scale === v ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
-              {label}
-            </button>
-          ))}
+          <div className="flex border-2 border-black">
+            {SCALES.map(([v, label], i) => (
+              <button key={v} onClick={() => setScale(v)} title={label} aria-label={label}
+                className={`inline-flex h-9 w-10 items-center justify-center ${
+                  i > 0 ? "border-l-2 border-black" : ""} ${
+                  scale === v ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
+                <IconTextSize scale={v} />
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="f-text mt-2 text-[12px] leading-relaxed text-neutral-500">
-          Μέγεθος της σελίδας. Κάθε υπολογιστής έχει δική του κλίμακα οθόνης και δικό του ζουμ
-          στον browser, γι' αυτό αλλού όλα δείχνουν κανονικά και αλλού τεράστια. Ισχύει μόνο σε
-          αυτή τη συσκευή.
+        <p className="f-text mt-3 max-w-[60ch] text-[12px] leading-relaxed text-neutral-500">
+          Το «Αυτόματο» ακολουθεί τη ρύθμιση της συσκευής σου. Τα τρία «Α» αλλάζουν το μέγεθος
+          της σελίδας — κάθε υπολογιστής έχει δική του κλίμακα οθόνης και δικό του ζουμ στον
+          browser, γι' αυτό αλλού όλα δείχνουν κανονικά και αλλού τεράστια. Και τα δύο ισχύουν
+          μόνο σε αυτή τη συσκευή.
         </p>
       </div>
 
@@ -3025,11 +3054,18 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
           </div>
           <div className="min-w-0 flex-1">
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickLogo} />
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" disabled={!!logoBusy}
                 onClick={() => fileRef.current && fileRef.current.click()}>
                 {logoBusy === "up" ? "Ανέβασμα…" : s.logo_url ? "Αλλαγή" : "Ανέβασμα λογότυπου"}
               </Button>
+              {s.logo_url && (
+                <button type="button" onClick={getIcons} disabled={!!logoBusy} title="Κατέβασμα εικονιδίων"
+                  aria-label="Κατέβασμα εικονιδίων"
+                  className="inline-flex h-9 w-9 items-center justify-center border-2 border-black bg-white text-black transition-colors hover:bg-black hover:text-white disabled:border-neutral-200 disabled:text-neutral-300">
+                  {logoBusy === "icons" ? <span className="f-display text-[13px]">…</span> : <IconDownload />}
+                </button>
+              )}
               {s.logo_url && (
                 <Button variant="ghost" size="sm" disabled={!!logoBusy} onClick={removeLogo}>
                   {logoBusy === "del" ? "…" : "Αφαίρεση"}
@@ -3041,17 +3077,6 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
               εδώ, και στην εφαρμογή των πελατών αριστερά από το όνομά τους. Αποθηκεύεται
               αμέσως, χωρίς το κουμπί πιο κάτω.
             </p>
-            {s.logo_url && (
-              <>
-                <Button variant="ghost" size="sm" className="mt-2 -ml-3" disabled={!!logoBusy} onClick={getIcons}>
-                  {logoBusy === "icons" ? "…" : "Κατέβασμα εικονιδίων για το repo"}
-                </Button>
-                <p className="f-text mt-1 max-w-[56ch] text-[12px] leading-relaxed text-neutral-500">
-                  Το εικονίδιο που βλέπει το iPhone στην αρχική οθόνη είναι στατικό αρχείο και δεν
-                  αλλάζει από εδώ. Κατέβασε τα τρία PNG και ανέβασέ τα στο repo πάνω από τα παλιά.
-                </p>
-              </>
-            )}
           </div>
         </div>
       </div>
@@ -3237,6 +3262,215 @@ function Newsletter({ flash, onAuthFail }) {
             ))}
           </div>
         </>
+      )}
+      <div className="h-10" />
+    </div>
+  );
+}
+
+/* ---------- Δικές μου ειδοποιήσεις ----------
+   Ο διαχειριστής γράφει το μήνυμα και λέει πότε φεύγει. Η ώρα
+   αποστολής κρατιέται στη βάση· ένα cron κάθε λεπτό στέλνει όσες
+   έφτασε η ώρα τους, γράφοντας μία γραμμή στον `notifications` για
+   κάθε παραλήπτη — από εκεί και πέρα ακολουθούν τον ίδιο δρόμο με
+   τις υπόλοιπες ειδοποιήσεις (trigger → edge function → push). */
+const AUDIENCES = [
+  ["all", "Όλοι οι πελάτες"],
+  ["marketing", "Μόνο όσοι δέχονται ενημερώσεις"],
+  ["active", "Όσοι έχουν κράτηση μπροστά"],
+];
+
+const EMPTY_ANN = { id: null, title: "", body: "", audience: "all", send_at: "" };
+
+/* Η βάση δίνει UTC, το input θέλει τοπική ώρα χωρίς ζώνη. */
+function isoToLocalInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fmtWhen(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function Announcements({ flash, onAuthFail }) {
+  const [rows, setRows] = useState(null);
+  const [form, setForm] = useState(EMPTY_ANN);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await rpc("admin_announcements", {});
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) { flash("Δεν φόρτωσαν οι ειδοποιήσεις"); return; }
+    setRows(data || []);
+  }, [flash, onAuthFail]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const set = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
+
+  const startNew = () => { setForm(EMPTY_ANN); setOpen(true); };
+
+  const startEdit = (r) => {
+    setForm({
+      id: r.id, title: r.title || "", body: r.body || "",
+      audience: r.audience || "all", send_at: isoToLocalInput(r.send_at),
+    });
+    setOpen(true);
+  };
+
+  const save = async (sendNow) => {
+    const title = form.title.trim();
+    const body = form.body.trim();
+    if (!body) { flash("Γράψε πρώτα το μήνυμα"); return; }
+    let when = null;
+    if (!sendNow) {
+      if (!form.send_at) { flash("Διάλεξε πότε θα σταλεί"); return; }
+      when = new Date(form.send_at).toISOString();
+    }
+    setBusy(sendNow ? "now" : "save");
+    const { data, error } = await rpc("admin_save_announcement", {
+      p_id: form.id, p_title: title, p_body: body,
+      p_audience: form.audience, p_send_at: when, p_send_now: !!sendNow,
+    });
+    setBusy("");
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { flash((data && data.error) || "Δεν αποθηκεύτηκε"); return; }
+    flash(sendNow ? `Στάλθηκε σε ${data.recipients} πελάτες` : "Μπήκε στο πρόγραμμα");
+    setOpen(false);
+    setForm(EMPTY_ANN);
+    load();
+  };
+
+  const remove = async (id) => {
+    setBusy("del");
+    const { data, error } = await rpc("admin_delete_announcement", { p_id: id });
+    setBusy("");
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { flash("Δεν διαγράφηκε"); return; }
+    setConfirmDel(null);
+    flash("Διαγράφηκε");
+    load();
+  };
+
+  const audienceLabel = (k) => {
+    const hit = AUDIENCES.find((a) => a[0] === k);
+    return hit ? hit[1] : k;
+  };
+
+  return (
+    <div className="max-w-2xl px-5 sm:px-6">
+      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Ειδοποιήσεις</h2>
+      <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+        Δικά σου μηνύματα προς τους πελάτες — κλειστά για διακοπές, καινούριο ομαδικό,
+        αλλαγή ωραρίου. Φτάνουν σαν ειδοποίηση στο κινητό τους και φαίνονται και μέσα
+        στην εφαρμογή.
+      </p>
+
+      {!open && (
+        <div className="mt-6">
+          <Button onClick={startNew}>Νέα ειδοποίηση</Button>
+        </div>
+      )}
+
+      {open && (
+        <div className="mt-6 border-2 border-black p-5">
+          <div className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+            {form.id ? "Επεξεργασία" : "Νέα ειδοποίηση"}
+          </div>
+
+          <label className="f-text mt-4 block text-[13px] text-neutral-500">Τίτλος</label>
+          <input value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={60}
+            placeholder="π.χ. Κλειστά την Καθαρά Δευτέρα"
+            className="f-text mt-2 h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
+
+          <label className="f-text mt-4 block text-[13px] text-neutral-500">Μήνυμα</label>
+          <textarea value={form.body} onChange={(e) => set("body", e.target.value)} rows={4} maxLength={300}
+            placeholder="Ό,τι θα διαβάσει ο πελάτης."
+            className="f-text mt-2 w-full resize-y border-2 border-black p-4 text-[15px] leading-relaxed outline-none" />
+          <div className="f-mono mt-1 text-right text-[11px] text-neutral-400">{form.body.length}/300</div>
+
+          <label className="f-text mt-2 block text-[13px] text-neutral-500">Σε ποιους</label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {AUDIENCES.map(([k, label]) => (
+              <button key={k} onClick={() => set("audience", k)}
+                className={`f-display border-2 border-black px-3 py-2 text-[11px] font-bold uppercase tracking-wide ${
+                  form.audience === k ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <label className="f-text mt-4 block text-[13px] text-neutral-500">Πότε να σταλεί</label>
+          <input type="datetime-local" value={form.send_at} onChange={(e) => set("send_at", e.target.value)}
+            className="f-mono mt-2 h-12 w-full max-w-xs border-2 border-black px-4 text-[14px] outline-none" />
+          <p className="f-text mt-2 text-[12px] leading-relaxed text-neutral-500">
+            Ώρα Ελλάδας. Αν θέλεις να φύγει αμέσως, πάτα «Στείλ' το τώρα» και άσε το πεδίο κενό.
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-2 border-t-2 border-black pt-4">
+            <Button disabled={!!busy} onClick={() => save(false)}>
+              {busy === "save" ? "…" : "Αποθήκευση στο πρόγραμμα"}
+            </Button>
+            <Button variant="outline" disabled={!!busy} onClick={() => save(true)}>
+              {busy === "now" ? "…" : "Στείλ' το τώρα"}
+            </Button>
+            <Button variant="ghost" onClick={() => { setOpen(false); setForm(EMPTY_ANN); }}>Άκυρο</Button>
+          </div>
+        </div>
+      )}
+
+      <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Ιστορικό και προγραμματισμένες</h3>
+
+      {rows === null ? (
+        <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
+      ) : rows.length === 0 ? (
+        <div className="f-text mt-2 border-2 border-dashed border-neutral-300 py-14 text-center text-[15px] text-neutral-500">
+          Δεν έχεις φτιάξει καμία ακόμα.
+        </div>
+      ) : (
+        <div className="mt-2 divide-y divide-neutral-200 border-y-2 border-black">
+          {rows.map((r) => (
+            <div key={r.id} className="py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="f-text text-[15px] font-semibold">{r.title || "Χωρίς τίτλο"}</div>
+                  <div className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">{r.body}</div>
+                  <div className="f-mono mt-2 text-[12px] text-neutral-500">
+                    {r.sent_at
+                      ? `Στάλθηκε ${fmtWhen(r.sent_at)} · ${r.recipients} παραλήπτες`
+                      : `Φεύγει ${fmtWhen(r.send_at)}`}
+                    {" · "}{audienceLabel(r.audience)}
+                  </div>
+                </div>
+                <span className={`f-display shrink-0 border-2 border-black px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                  r.sent_at ? "bg-black text-white" : "bg-white text-black"}`}>
+                  {r.sent_at ? "Στάλθηκε" : "Σε αναμονή"}
+                </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!r.sent_at && (
+                  <Button variant="outline" size="sm" onClick={() => startEdit(r)}>Επεξεργασία</Button>
+                )}
+                {confirmDel === r.id ? (
+                  <>
+                    <Button size="sm" disabled={!!busy} onClick={() => remove(r.id)}>Ναι, σβήσ' τη</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDel(null)}>Άκυρο</Button>
+                  </>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDel(r.id)}>Διαγραφή</Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
       <div className="h-10" />
     </div>
