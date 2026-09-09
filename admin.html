@@ -1924,7 +1924,6 @@ function Access({ flash, onAuthFail }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [guessed, setGuessed] = useState(false);
-  const [mm, setMm] = useState("40");
 
   useEffect(() => {
     (async () => {
@@ -1955,9 +1954,9 @@ function Access({ flash, onAuthFail }) {
     catch (e) { flash("Η αντιγραφή δεν είναι διαθέσιμη"); }
   };
 
+  /* Σταθερά 100 mm πλευρά — αυτό τυπώνουμε. */
   const saveSvg = (text, name) => {
-    const size = Math.min(300, Math.max(10, Number(mm) || 40));
-    const svg = qrSvgForCad(text, size);
+    const svg = qrSvgForCad(text, 100);
     if (!svg) { flash("Ο σύνδεσμος είναι πολύ μεγάλος για QR"); return; }
     downloadFile(name, svg, "image/svg+xml");
   };
@@ -1990,7 +1989,6 @@ function Access({ flash, onAuthFail }) {
       </div>
 
       {url ? (
-        <>
         <div className="mt-8 grid max-w-3xl gap-6 sm:grid-cols-2">
           <div className="border-2 border-black p-5">
             <div className="f-display text-[14px] font-bold uppercase tracking-wide">Άνοιγμα εφαρμογής</div>
@@ -2011,23 +2009,6 @@ function Access({ flash, onAuthFail }) {
             </div>
           </div>
         </div>
-
-        <div className="mt-6 max-w-3xl border-2 border-black p-5">
-          <div className="f-display text-[14px] font-bold uppercase tracking-wide">SVG για 3D εκτύπωση</div>
-          <div className="mt-3 flex items-center gap-3">
-            <label className="f-text text-[13px] text-neutral-500">Πλευρά πλάκας</label>
-            <input value={mm} onChange={(e) => setMm(e.target.value)} inputMode="decimal"
-              className="f-mono h-9 w-20 border-2 border-black px-2 text-[13px] outline-none" />
-            <span className="f-text text-[13px] text-neutral-500">mm</span>
-          </div>
-          <p className="f-text mt-3 max-w-[52ch] text-[13px] leading-relaxed text-neutral-500">
-            Το SVG βγαίνει στο μέγεθος που γράφεις εδώ, οπότε στο Fusion μπαίνει με
-            Insert SVG και δεν θέλει ξανά κλιμάκωση. Μέσα έχει τα μαύρα τετράγωνα και
-            το περίγραμμα της πλάκας — στο Extrude διάλεξε τα τετράγωνα και ξεδιάλεξε
-            τη γύρω περιοχή.
-          </p>
-        </div>
-        </>
       ) : (
         <p className="f-text mt-8 text-[14px] text-neutral-500">
           Συμπλήρωσε τη διεύθυνση πιο πάνω και πάτα Αποθήκευση για να δημιουργηθούν τα QR.
