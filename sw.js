@@ -8,7 +8,7 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "app-v8";
+const VERSION = "app-v9";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
 
@@ -116,9 +116,19 @@ async function brandedManifest(request) {
 
   try {
     const m = await res.clone().json();
-    const brand = await readBrand();
-    m.name = brand;
-    m.short_name = brand;
+    /* Το όνομα μπαίνει μόνο αν μας το έχει στείλει η σελίδα. Αλλιώς το
+       αφήνουμε κενό, για να πάρει ο browser το όνομα από τη σελίδα
+       (τίτλος / apple-mobile-web-app-title) αντί για το εφεδρικό
+       «Γυμναστήριο». */
+    const brand = await readStored(BRAND_URL);
+    if (brand) {
+      brandMemo = brand;
+      m.name = brand;
+      m.short_name = brand;
+    } else {
+      delete m.name;
+      delete m.short_name;
+    }
 
     /* Μόνο κανονική διεύθυνση. Λογότυπο σε data URL το κόβουν τα
        περισσότερα κινητά και χαλάει όλη η εγκατάσταση. */

@@ -40,6 +40,22 @@
      άσπρα ή μαύρα γράμματα ανάλογα με το φόντο. -->
 <meta name="apple-mobile-web-app-title" content="Γυμναστήριο" />
 <title>Γυμναστήριο</title>
+<!-- Το όνομα που προτείνει το iPhone στο «Προσθήκη στην οθόνη Αφετηρίας».
+     Το Safari το διαβάζει από εδώ, οπότε πρέπει να είναι σωστό από την
+     πρώτη στιγμή — όχι μόνο αφού απαντήσει ο διακομιστής. Κρατάμε στη
+     μνήμη του κινητού το όνομα που έδωσε ο διαχειριστής την τελευταία
+     φορά και το βάζουμε αμέσως. Η loadAppSettings το ανανεώνει μετά. -->
+<script>
+  (function () {
+    try {
+      var n = (localStorage.getItem("kinesis_brand") || "").trim();
+      if (!n) return;
+      document.title = n;
+      var m = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (m) m.setAttribute("content", n);
+    } catch (e) { /* αγνόησε */ }
+  })();
+</script>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
@@ -155,7 +171,11 @@ const sb = { rpc: (fnName, args) => rpc(fnName, args) };
    Το παράθυρο το κρίνει πάντα η βάση μέσα στην check_in· εδώ το
    χρησιμοποιούμε μόνο για να δείχνει η οθόνη από πριν αν το κουμπί
    δουλεύει, αντί να το μαθαίνει ο πελάτης αφού πατήσει. */
-let GYM_NAME = "Γυμναστήριο";
+const BRAND_KEY = "kinesis_brand";
+function cachedBrand() {
+  try { return (localStorage.getItem(BRAND_KEY) || "").trim(); } catch (e) { return ""; }
+}
+let GYM_NAME = cachedBrand() || "Γυμναστήριο";
 let MAX_DAYS_AHEAD = 14;
 let CHECKIN_BEFORE_MIN = 10;
 let CHECKIN_AFTER_MIN = 30;
@@ -2734,7 +2754,19 @@ async function loadAppSettings() {
   const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
   const call = sb.rpc("app_settings", {}).then((r) => (r.error ? null : r.data)).catch(() => null);
   const data = await Promise.race([call, timeout]);
-  if (!data) return;
+  if (!data) {
+    /* Άργησε ο διακομιστής και ξεκινήσαμε χωρίς αυτόν. Όταν απαντήσει,
+       διορθώνουμε τουλάχιστον το όνομα, ώστε το «Προσθήκη στην οθόνη
+       Αφετηρίας» να προτείνει το σωστό. */
+    call.then((late) => {
+      if (late && late.gym_name) {
+        GYM_NAME = late.gym_name;
+        if (late.logo_url) GYM_LOGO = late.logo_url;
+        applyBrandToPage();
+      }
+    });
+    return;
+  }
   if (data.gym_name) GYM_NAME = data.gym_name;
   if (data.logo_url) GYM_LOGO = data.logo_url;
   if (data.chat_enabled === false) CHAT_ENABLED = false;
@@ -2746,6 +2778,7 @@ async function loadAppSettings() {
 /* Το όνομα μπαίνει και στην καρτέλα του browser και στην ετικέτα που
    προτείνει το iPhone στο «Πρόσθεση στην αρχική οθόνη». */
 function applyBrandToPage() {
+  try { localStorage.setItem(BRAND_KEY, GYM_NAME); } catch (e) { /* αγνόησε */ }
   document.title = GYM_NAME;
   const meta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
   if (meta) meta.setAttribute("content", GYM_NAME);
@@ -2791,7 +2824,14 @@ function tellServiceWorker() {
    ακόμη σκέτο. Το ξαναγράφουμε στη μνήμη ως blob. Από τη δεύτερη
    επίσκεψη και μετά το αναλαμβάνει ο service worker — το blob είναι
    λιγότερο αξιόπιστο και δεν το βάζουμε μπροστά του χωρίς λόγο. */
+/* Στο iPhone/iPad όχι: το Safari δεν δέχεται manifest από blob και θα
+   έχανε μαζί και τα εικονίδια. Εκεί το όνομα το παίρνει από το
+   apple-mobile-web-app-title, που το ορίζουμε ήδη πιο πάνω. */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
 async function applyBrandToManifest() {
+  if (IS_IOS) return;
   if (navigator.serviceWorker && navigator.serviceWorker.controller) return;
   try {
     const link = document.querySelector('link[rel="manifest"]');

@@ -1,6 +1,4 @@
 {
-  "name": "Γυμναστήριο",
-  "short_name": "Γυμναστήριο",
   "description": "Κρατήσεις γυμναστηρίου",
   "start_url": "./index.html",
   "scope": "./",
