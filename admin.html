@@ -1972,18 +1972,12 @@ function Station({ flash, onAuthFail }) {
         )}
       </div>
 
-      {NFC_OK ? (
+      {NFC_OK && (
         <div className="mt-4 flex flex-wrap gap-2">
           {!scanning
             ? <Button onClick={start}>Έναρξη ανάγνωσης</Button>
             : <Button variant="outline" onClick={stop}>Παύση</Button>}
         </div>
-      ) : (
-        <p className="f-text mt-4 max-w-[54ch] border-2 border-dashed border-neutral-300 p-4 text-[13px] leading-relaxed text-neutral-600">
-          Αυτή η συσκευή δεν διαβάζει NFC από ιστοσελίδα. Χρειάζεται κινητό ή tablet
-          <strong> Android με Chrome</strong>. Το iPhone δεν το επιτρέπει. Μέχρι τότε, πέρνα τους
-          πελάτες με το όνομά τους πιο κάτω.
-        </p>
       )}
 
       <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Χωρίς κάρτα</h3>
@@ -3152,10 +3146,6 @@ function Access({ flash, onAuthFail }) {
   return (
     <div className="px-5 sm:px-6">
       <h2 className="f-display border-t-2 border-black pt-6 text-[24px] font-extrabold uppercase tracking-tight">QR & NFC στην είσοδο</h2>
-      <p className="f-text mt-1 max-w-[52ch] text-[13px] leading-relaxed text-neutral-500">
-        Τύπωσε το QR ή γράψε τον σύνδεσμο σε NFC tag. Ο πελάτης το σκανάρει ή ακουμπάει το κινητό
-        και ανοίγει η εφαρμογή. Δεν χρειάζεται εγκατάσταση.
-      </p>
 
       <div className="mt-6 max-w-xl">
         <label className="f-text text-[13px] text-neutral-500">Διεύθυνση εφαρμογής πελατών</label>
@@ -3202,10 +3192,6 @@ function Access({ flash, onAuthFail }) {
 
       <div className="mt-9 max-w-xl border-t-2 border-black pt-6">
         <h3 className="f-display text-[14px] font-bold uppercase tracking-wide">NFC tag για check-in</h3>
-        <p className="f-text mt-2 max-w-[54ch] text-[13px] leading-relaxed text-neutral-600">
-          Ο πελάτης ακουμπάει το κινητό του στο tag και ανοίγει η εφαρμογή κατευθείαν στο check-in.
-          Αυτός είναι ο σύνδεσμος που γράφεται πάνω στο tag:
-        </p>
 
         {checkinUrl ? (
           <div className="mt-3 border-2 border-black p-4">
@@ -3219,35 +3205,12 @@ function Access({ flash, onAuthFail }) {
                 </Button>
               )}
             </div>
-            {NFC_OK ? (
-              <p className="f-text mt-3 text-[12px] leading-relaxed text-neutral-500">
-                Πάτα «Γράψιμο στο tag» και ακούμπησε το άγραφο tag στην πλάτη του κινητού.
-              </p>
-            ) : (
-              <p className="f-text mt-3 text-[12px] leading-relaxed text-neutral-500">
-                Από αυτή τη συσκευή το tag δεν γράφεται απευθείας (θέλει Android με Chrome). Από iPhone:
-                αντέγραψε τον σύνδεσμο, άνοιξε τη δωρεάν εφαρμογή <strong>NFC Tools</strong> → Εγγραφή →
-                Προσθήκη εγγραφής → URL, επικόλλησέ τον και ακούμπησε το tag.
-              </p>
-            )}
           </div>
         ) : (
           <p className="f-text mt-3 text-[13px] text-neutral-500">
             Συμπλήρωσε πρώτα τη διεύθυνση της εφαρμογής πιο πάνω και πάτα Αποθήκευση.
           </p>
         )}
-
-        <ol className="f-text mt-5 space-y-2 text-[13px] leading-relaxed text-neutral-600">
-          <li>1. Πάρε NTAG213 ή NTAG215 sticker.</li>
-          <li>2. Γράψε πάνω του τον σύνδεσμο check-in (NDEF record τύπου URL).</li>
-          <li>3. Κόλλησέ το στην είσοδο, δίπλα στο τυπωμένο QR.</li>
-        </ol>
-        <p className="f-text mt-4 max-w-[54ch] text-[13px] leading-relaxed text-neutral-600">
-          Αυτό το tag είναι για τα κινητά των πελατών: το ακουμπάνε και ανοίγει η εφαρμογή στο
-          check-in. Οι <strong>κάρτες</strong> είναι άλλη ιστορία — κάθε πελάτης παίρνει τη δική
-          του από την καρτέλα του στους Πελάτες, και τη διαβάζει η καρτέλα «Είσοδος» πάνω σε
-          Android με Chrome.
-        </p>
       </div>
       <div className="h-10" />
     </div>
@@ -3665,12 +3628,6 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
             ))}
           </div>
         </div>
-        <p className="f-text mt-3 max-w-[60ch] text-[12px] leading-relaxed text-neutral-500">
-          Το «Αυτόματο» ακολουθεί τη ρύθμιση της συσκευής σου. Τα τρία «Α» αλλάζουν το μέγεθος
-          της σελίδας — κάθε υπολογιστής έχει δική του κλίμακα οθόνης και δικό του ζουμ στον
-          browser, γι' αυτό αλλού όλα δείχνουν κανονικά και αλλού τεράστια. Και τα δύο ισχύουν
-          μόνο σε αυτή τη συσκευή.
-        </p>
       </div>
 
       <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Κρατήσεις</h3>
