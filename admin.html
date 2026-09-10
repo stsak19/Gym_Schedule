@@ -3276,10 +3276,15 @@ function Newsletter({ flash, onAuthFail }) {
    τις υπόλοιπες ειδοποιήσεις (trigger → edge function → push). */
 const AUDIENCES = [
   ["all", "Όλοι οι πελάτες"],
-  ["marketing", "Μόνο όσοι δέχονται ενημερώσεις"],
-  ["active", "Όσοι έχουν κράτηση μπροστά"],
   ["one", "Σε έναν πελάτη"],
 ];
+
+/* Παλιές ειδοποιήσεις μπορεί να έχουν παραλήπτες που δεν προσφέρονται
+   πια σαν επιλογή. Τα κρατάμε μόνο για να διαβάζεται το ιστορικό. */
+const OLD_AUDIENCES = {
+  marketing: "Μόνο όσοι δέχονται ενημερώσεις",
+  active: "Όσοι έχουν κράτηση μπροστά",
+};
 
 const EMPTY_ANN = {
   id: null, title: "", body: "", audience: "all", send_at: "",
@@ -3323,9 +3328,7 @@ function OneClientPicker({ clientId, clientName, onPick, onClear, onAuthFail }) 
     const rows = all || [];
     const term = q.trim().toLowerCase();
     const hit = term
-      ? rows.filter((c) =>
-          String(c.name || "").toLowerCase().includes(term) ||
-          String(c.phone || "").includes(term))
+      ? rows.filter((c) => String(c.name || "").toLowerCase().includes(term))
       : rows;
     /* Ο ήδη επιλεγμένος μένει πάντα μέσα, αλλιώς το select θα άδειαζε
        μόλις γραφτεί κάτι στην αναζήτηση. */
@@ -3346,11 +3349,9 @@ function OneClientPicker({ clientId, clientName, onPick, onClear, onAuthFail }) 
 
   return (
     <div className="mt-2">
-      {all.length > 8 && (
-        <input value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder="Φιλτράρισμα — όνομα ή κινητό"
-          className="f-text mb-2 h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
-      )}
+      <input value={q} onChange={(e) => setQ(e.target.value)}
+        placeholder="Αναζήτηση με το όνομα"
+        className="f-text mb-2 h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
 
       <select
         value={clientId || ""}
@@ -3363,11 +3364,13 @@ function OneClientPicker({ clientId, clientName, onPick, onClear, onAuthFail }) 
         className="f-text h-12 w-full border-2 border-black bg-white px-3 text-[15px] outline-none">
         <option value="">— Διάλεξε πελάτη —</option>
         {list.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}{c.phone ? " · " + c.phone : ""}
-          </option>
+          <option key={c.id} value={c.id}>{c.name}</option>
         ))}
       </select>
+
+      {q.trim() && list.length === 0 && (
+        <div className="f-text mt-2 text-[13px] text-neutral-500">Κανένας πελάτης μ' αυτό το όνομα.</div>
+      )}
 
       {clientId && (
         <div className="f-text mt-2 text-[13px] text-neutral-500">
@@ -3451,7 +3454,7 @@ function Announcements({ flash, onAuthFail }) {
   const audienceLabel = (r) => {
     if (r.audience === "one") return "Προσωπικά" + (r.client_name ? ` προς ${r.client_name}` : "");
     const hit = AUDIENCES.find((a) => a[0] === r.audience);
-    return hit ? hit[1] : r.audience;
+    return hit ? hit[1] : (OLD_AUDIENCES[r.audience] || r.audience);
   };
 
   return (
