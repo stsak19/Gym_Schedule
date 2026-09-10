@@ -123,6 +123,24 @@ html, body { margin: 0; background: #fff; }
 .btn-danger:active { background-color: #FFFFFF !important; color: #C81E1E !important; }
 [data-theme="dark"] .btn-danger:active { background-color: #0C0C0C !important; }
 .btn-danger:disabled { opacity: 0.5; }
+
+/* Οθόνη εισόδου. Η εικόνα κουμπώνει δεξιά, για να μην κόβεται ποτέ
+   το κείμενο της εικόνας σε στενά κινητά — ό,τι περισσεύει χάνεται
+   από τα κλαδιά στα αριστερά. */
+.entry-bg {
+  background-color: #FEFEFE;
+  background-image: url("./entry-bg.jpg");
+  background-size: cover;
+  background-position: right center;
+  background-repeat: no-repeat;
+}
+/* Πέπλο πάνω από την εικόνα. Άδειο στην αρχική οθόνη· σχεδόν
+   αδιαφανές όταν ανοίγει η φόρμα, ώστε τα πεδία να διαβάζονται. */
+.entry-veil { background-color: rgba(255, 255, 255, 0); transition: background-color 250ms ease; }
+.entry-veil.is-form { background-color: rgba(255, 255, 255, 0.9); }
+[data-theme="dark"] .entry-veil { background-color: rgba(12, 12, 12, 0.72); }
+[data-theme="dark"] .entry-veil.is-form { background-color: rgba(12, 12, 12, 0.93); }
+@media (prefers-reduced-motion: reduce) { .entry-veil { transition: none; } }
 </style>
 </head>
 <body>
@@ -1007,14 +1025,15 @@ function SignIn({ onLogin, flash }) {
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-md flex-col justify-between overflow-hidden px-6 pb-20"
+    <div className="relative h-full overflow-hidden">
+      <div className="entry-bg pointer-events-none absolute inset-0" aria-hidden="true" />
+      <div className={`entry-veil pointer-events-none absolute inset-0 ${mode ? "is-form" : ""}`} aria-hidden="true" />
+
+    <div className="relative mx-auto flex h-full max-w-md flex-col justify-between overflow-hidden px-6 pb-20"
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}>
       <div>
         <div className="f-display text-[13px] font-bold uppercase tracking-[0.18em] text-neutral-400">{GYM_NAME}</div>
         <div className="mt-5"><ScoreboardClock /></div>
-        <h1 className="f-display mt-6 text-[38px] font-extrabold uppercase leading-[0.95] tracking-tight">
-          Κράτησε την ώρα σου<br />σε δέκα δευτερόλεπτα
-        </h1>
       </div>
 
       <div className="mt-8">
@@ -1106,6 +1125,7 @@ function SignIn({ onLogin, flash }) {
       </div>
 
       {policy && <PrivacyPolicy onClose={() => setPolicy(false)} />}
+    </div>
     </div>
   );
 }
