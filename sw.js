@@ -271,6 +271,10 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of list) {
         try {
           if (samePage(new URL(client.url).pathname, url.pathname) && "focus" in client) {
+            /* Η σελίδα είναι ήδη ανοιχτή, οπότε δεν ξαναφορτώνει και δεν
+               βλέπει το ?chat=1 της διεύθυνσης. Της το λέμε με μήνυμα,
+               για να ανοίξει μόνη της την καρτέλα που πρέπει. */
+            try { client.postMessage({ type: "open", url: url.href }); } catch (e) { /* αγνόησε */ }
             return client.focus();
           }
         } catch (e) { /* αγνόησε */ }

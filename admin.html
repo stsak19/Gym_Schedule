@@ -642,6 +642,69 @@ function useNewBookings({ enabled, onAuthFail, flash }) {
   return { items: items, unseen: unseen, pulse: pulse, error: error, markSeen: markSeen, dismiss: dismiss, clear: clear };
 }
 
+/* ---------- Νέα μηνύματα από πελάτες ----------
+   Ίδια λογική με τις νέες κρατήσεις: ρωτάμε ανά λίγα δευτερόλεπτα τι
+   αδιάβαστο υπάρχει. Ό,τι id δεν έχουμε ξαναδεί χτυπάει ήχο και βγάζει
+   ειδοποίηση. Στην πρώτη ματιά απλώς καταγράφουμε, για να μη σκάσουν
+   μαζεμένα όσα περίμεναν ήδη — ο μετρητής όμως τα δείχνει.
+
+   Αν η συζήτηση με αυτόν τον πελάτη είναι ήδη ανοιχτή μπροστά στον
+   διαχειριστή, δεν ειδοποιούμε: το βλέπει. */
+const CHAT_WATCH_MS = 15000;
+
+function useChatWatch({ enabled, onAuthFail, flash, openClientRef }) {
+  const [unread, setUnread] = useState(0);
+  const [pulse, setPulse] = useState(0);
+  const knownRef = useRef(null);
+  const scanRef = useRef(() => {});
+
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+
+    const scan = async () => {
+      const { data, error } = await rpc("admin_chat_unread", {});
+      if (!alive) return;
+      if (error === "AUTH") { onAuthFail(); return; }
+      if (error || !data) return;
+
+      setUnread(data.unread || 0);
+      const items = data.items || [];
+      if (knownRef.current === null) {
+        knownRef.current = new Set(items.map((m) => m.id));
+        return;
+      }
+      const fresh = items.filter((m) => !knownRef.current.has(m.id));
+      items.forEach((m) => knownRef.current.add(m.id));
+      if (fresh.length === 0) return;
+
+      setPulse((n) => n + 1);
+      const loud = fresh.filter((m) => m.client_id !== openClientRef.current);
+      if (loud.length === 0) return;
+
+      chime(false);
+      loud.slice(0, 3).forEach((m) =>
+        notify("💬 " + m.name, String(m.body || "").slice(0, 140), "kinesis-chat-" + m.id));
+      flash(loud.length === 1 ? "Μήνυμα από " + loud[0].name : loud.length + " νέα μηνύματα");
+    };
+
+    scanRef.current = scan;
+    scan();
+    const id = setInterval(scan, CHAT_WATCH_MS);
+    const onVisible = () => { if (document.visibilityState === "visible") scan(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      scanRef.current = () => {};
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [enabled, onAuthFail, flash, openClientRef]);
+
+  const refresh = useCallback(() => { scanRef.current(); }, []);
+  return { unread: unread, pulse: pulse, refresh: refresh };
+}
+
 /* ---------- UI pieces ---------- */
 const FONT = { fontFamily: "'Big Shoulders Text', system-ui, sans-serif" };
 
@@ -884,6 +947,7 @@ const TABS = [
   ["schedule", "Πρόγραμμα"],
   ["hours", "Χωρητικότητα"],
   ["people", "Πελάτες"],
+  ["chat", "Μηνύματα"],
   ["goals", "Στόχοι πελατών"],
   ["stats", "Στατιστικά"],
   ["access", "Είσοδος, QR & NFC"],
@@ -944,6 +1008,11 @@ function App() {
   const logout = () => { signOut(); setAuthed(false); };
 
   const watch = useNewBookings({ enabled: authed && !checking, onAuthFail: onAuthFail, flash: flash });
+
+  /* Ποια συζήτηση είναι ανοιχτή τώρα — για να μην ειδοποιεί για
+     μήνυμα που ο διαχειριστής βλέπει ήδη μπροστά του. */
+  const openChatRef = useRef(null);
+  const chat = useChatWatch({ enabled: authed && !checking, onAuthFail: onAuthFail, flash: flash, openClientRef: openChatRef });
   const [bellOpen, setBellOpen] = useState(false);
   const [focus, setFocus] = useState(null);
   const [sound, setSound] = useState(soundOn);
@@ -1018,6 +1087,10 @@ function App() {
       )}
       {tab === "hours" && <Hours {...props} />}
       {tab === "people" && <People {...props} />}
+      {tab === "chat" && (
+        <Chat {...props} isDesktop={isDesktop} pulse={chat.pulse}
+          onChanged={chat.refresh} openClientRef={openChatRef} />
+      )}
       {tab === "goals" && <Goals {...props} />}
       {tab === "stats" && <Stats {...props} />}
       {tab === "access" && (
@@ -1057,9 +1130,13 @@ function App() {
           <div className="relative border-b-2 border-black bg-white px-5 py-3">
             <select value={tab} onChange={(e) => setTab(e.target.value)}
               className="f-display h-12 w-full appearance-none border-2 border-black bg-white px-4 text-[14px] font-bold uppercase tracking-wide outline-none">
-              {TABS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              {TABS.map(([k, label]) => (
+                <option key={k} value={k}>
+                  {k === "chat" && chat.unread > 0 ? `${label} (${chat.unread})` : label}
+                </option>
+              ))}
             </select>
-            {somethingNew && tab !== "schedule" && (
+            {((somethingNew && tab !== "schedule") || (chat.unread > 0 && tab !== "chat")) && (
               <Dot className="pointer-events-none absolute right-9 top-1/2 -translate-y-1/2" />
             )}
           </div>
@@ -1092,6 +1169,11 @@ function App() {
                   tab === k ? "border-black bg-black text-white" : "border-transparent text-neutral-600 hover:border-neutral-300"}`}>
                 {label}
                 {k === "schedule" && tab !== "schedule" && somethingNew && <Dot />}
+                {k === "chat" && chat.unread > 0 && (
+                  <span className="f-mono flex h-[19px] min-w-[19px] items-center justify-center rounded-full bg-red-600 px-[4px] text-[10px] font-bold leading-none text-white">
+                    {chat.unread > 9 ? "9+" : chat.unread}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -3377,6 +3459,330 @@ function OneClientPicker({ clientId, clientName, onPick, onClear, onAuthFail }) 
           Παραλήπτης: <strong className="text-black">{clientName || "—"}</strong>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Μηνύματα με τους πελάτες
+   Αριστερά (ή πάνω, στο κινητό) οι συζητήσεις των τελευταίων 48 ωρών,
+   δεξιά η ανοιχτή. Τα μηνύματα τα σβήνει μόνη της η βάση 48 ώρες
+   μετά. Ο πελάτης βλέπει ως αποστολέα το όνομα του γυμναστηρίου, όχι
+   ποιος διαχειριστής έγραψε.
+   ============================================================ */
+const THREAD_POLL_MS = 5000;
+const CHATS_POLL_MS = 10000;
+
+function fmtChatTime(at) {
+  const d = new Date(at);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const hm = pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  if (iso(d) === iso(now)) return hm;
+  if (iso(d) === iso(addDays(now, -1))) return "Χθες " + hm;
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}, ${hm}`;
+}
+
+function ChatThread({ client, flash, onAuthFail, onBack, onChanged, onDeleted, isDesktop }) {
+  const [msgs, setMsgs] = useState(null);
+  const [info, setInfo] = useState(client);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const listRef = useRef(null);
+  const stickRef = useRef(true);
+  const lastIdRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const load = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    const { data, error } = await rpc("admin_chat", { p_client_id: client.client_id });
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) {
+      setMsgs((prev) => (prev === null ? [] : prev));
+      return;
+    }
+    const list = data.messages || [];
+    setMsgs(list);
+    setInfo({ client_id: data.client_id, name: data.name, phone: data.phone });
+    /* Η λίστα αριστερά και ο μετρητής ανανεώνονται μόνο όταν όντως
+       ήρθε κάτι — όχι σε κάθε ματιά. */
+    const lastId = list.length ? list[list.length - 1].id : "";
+    if (lastIdRef.current !== lastId) {
+      lastIdRef.current = lastId;
+      onChanged();
+    }
+  }, [client.client_id, onAuthFail, onChanged]);
+
+  useEffect(() => {
+    setMsgs(null);
+    setText("");
+    setConfirmDel(false);
+    stickRef.current = true;
+    lastIdRef.current = null;
+    load();
+    const id = setInterval(load, THREAD_POLL_MS);
+    const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    if (isDesktop && inputRef.current) inputRef.current.focus();
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load, isDesktop]);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && msgs && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [msgs]);
+
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  const send = async () => {
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true);
+    const { data, error } = await rpc("admin_send_chat", { p_client_id: client.client_id, p_body: body });
+    setSending(false);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { flash((data && data.error) || "Δεν στάλθηκε"); return; }
+    setText("");
+    stickRef.current = true;
+    setMsgs((prev) => [...(prev || []), { id: data.id, mine: true, body: body, at: data.at, read: false }]);
+    load();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    let finePointer = false;
+    try { finePointer = window.matchMedia("(pointer: fine)").matches; } catch (err) { /* αγνόησε */ }
+    if (!finePointer) return;
+    e.preventDefault();
+    send();
+  };
+
+  const removeAll = async () => {
+    const { data, error } = await rpc("admin_delete_chat", { p_client_id: client.client_id });
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { flash("Δεν σβήστηκε"); return; }
+    setConfirmDel(false);
+    flash("Η συζήτηση σβήστηκε");
+    onDeleted();
+  };
+
+  const list = msgs || [];
+  let lastMine = -1;
+  list.forEach((m, i) => { if (m.mine) lastMine = i; });
+  const rows = Math.min(5, Math.max(2, text.split("\n").length));
+
+  return (
+    <div className="flex flex-col border-2 border-black" style={{ height: "68vh", minHeight: 360 }}>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b-2 border-black px-4 py-3">
+        <div className="min-w-0">
+          {!isDesktop && (
+            <button onClick={onBack}
+              className="f-text mb-1 block text-[13px] text-neutral-500 hover:text-black">
+              Όλες οι συζητήσεις
+            </button>
+          )}
+          <div className="f-display truncate text-[17px] font-bold uppercase tracking-wide">{info.name || "Πελάτης"}</div>
+          {info.phone && (
+            <a href={"tel:" + info.phone} className="f-mono text-[12px] text-neutral-500 hover:text-black">{info.phone}</a>
+          )}
+        </div>
+        {list.length > 0 && (
+          confirmDel ? (
+            <div className="flex gap-2">
+              <Button size="sm" onClick={removeAll}>Ναι, σβήσ' τη</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDel(false)}>Άκυρο</Button>
+            </div>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDel(true)}>Σβήσε τη συζήτηση</Button>
+          )
+        )}
+      </div>
+
+      <div ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {msgs === null ? (
+          <div className="f-text py-10 text-center text-[14px] text-neutral-400">Φόρτωση…</div>
+        ) : list.length === 0 ? (
+          <div className="f-text py-10 text-center text-[14px] text-neutral-500">
+            Δεν υπάρχει μήνυμα τις τελευταίες 48 ώρες. Γράψε πρώτος.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {list.map((m, i) => (
+              <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
+                <div className={`f-text max-w-[78%] whitespace-pre-wrap break-words border-2 border-black px-3.5 py-2.5 text-[15px] leading-snug ${
+                  m.mine ? "bg-black text-white" : "bg-white text-black"}`}>
+                  {m.body}
+                </div>
+                <div className="f-mono mt-1 text-[11px] text-neutral-400">
+                  {fmtChatTime(m.at)}
+                  {i === lastMine && (m.read ? ", το διάβασε" : ", δεν το έχει δει")}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t-2 border-black p-3">
+        <div className="flex items-end gap-2">
+          <textarea ref={inputRef} value={text} rows={rows} maxLength={1000}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Γράψε απάντηση"
+            className="f-text min-w-0 flex-1 resize-none border-2 border-black bg-white px-3 py-2.5 text-[15px] leading-snug outline-none" />
+          <Button onClick={send} disabled={!text.trim() || sending} className="shrink-0">
+            {sending ? "…" : "Αποστολή"}
+          </Button>
+        </div>
+        <div className="f-text mt-1.5 flex justify-between gap-3 text-[11px] text-neutral-400">
+          <span>{isDesktop ? "Enter για αποστολή, Shift+Enter για νέα γραμμή." : "Ο πελάτης παίρνει ειδοποίηση στο κινητό."}</span>
+          {text.length > 900 && <span className="f-mono">{text.length}/1000</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Chat({ flash, onAuthFail, isDesktop, pulse, onChanged, openClientRef }) {
+  const [list, setList] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [pick, setPick] = useState({ id: null, name: "", phone: "" });
+  const failedRef = useRef(false);
+
+  const loadList = useCallback(async () => {
+    const { data, error } = await rpc("admin_chats", {});
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) {
+      if (!failedRef.current) { failedRef.current = true; flash("Δεν φόρτωσαν τα μηνύματα"); }
+      setList((prev) => (prev === null ? [] : prev));
+      return;
+    }
+    failedRef.current = false;
+    setList(data || []);
+  }, [flash, onAuthFail]);
+
+  useEffect(() => {
+    loadList();
+    const id = setInterval(() => { if (document.visibilityState === "visible") loadList(); }, CHATS_POLL_MS);
+    return () => clearInterval(id);
+  }, [loadList]);
+
+  /* Ήρθε νέο μήνυμα (το είδε ο έλεγχος στο παρασκήνιο). */
+  useEffect(() => { if (pulse) loadList(); }, [pulse, loadList]);
+
+  useEffect(() => {
+    openClientRef.current = sel ? sel.client_id : null;
+    return () => { openClientRef.current = null; };
+  }, [sel, openClientRef]);
+
+  const threadChanged = useCallback(() => { loadList(); onChanged(); }, [loadList, onChanged]);
+
+  const startWith = () => {
+    if (!pick.id) { flash("Διάλεξε πρώτα τον πελάτη"); return; }
+    setSel({ client_id: pick.id, name: pick.name, phone: pick.phone });
+    setPicking(false);
+    setPick({ id: null, name: "", phone: "" });
+  };
+
+  const rows = list || [];
+
+  const listView = (
+    <div>
+      {!picking ? (
+        <Button variant="outline" size="sm" onClick={() => setPicking(true)}>Νέα συζήτηση</Button>
+      ) : (
+        <div className="border-2 border-black p-4">
+          <div className="f-text text-[13px] text-neutral-500">Σε ποιον πελάτη θέλεις να γράψεις;</div>
+          <OneClientPicker
+            clientId={pick.id}
+            clientName={pick.name}
+            onPick={(c) => setPick({ id: c.id, name: c.name, phone: c.phone || "" })}
+            onClear={() => setPick({ id: null, name: "", phone: "" })}
+            onAuthFail={onAuthFail}
+          />
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={startWith}>Άνοιξε τη συζήτηση</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setPicking(false); setPick({ id: null, name: "", phone: "" }); }}>Άκυρο</Button>
+          </div>
+        </div>
+      )}
+
+      {list === null ? (
+        <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
+      ) : rows.length === 0 ? (
+        <div className="f-text mt-4 border-2 border-dashed border-neutral-300 px-4 py-12 text-center text-[15px] text-neutral-500">
+          Κανένα μήνυμα τις τελευταίες 48 ώρες.
+        </div>
+      ) : (
+        <div className="mt-4 divide-y divide-neutral-200 border-y-2 border-black">
+          {rows.map((r) => {
+            const active = sel && sel.client_id === r.client_id;
+            return (
+              <button key={r.client_id}
+                onClick={() => setSel({ client_id: r.client_id, name: r.name, phone: r.phone })}
+                className={`flex w-full items-start justify-between gap-3 px-3 py-3 text-left ${
+                  active ? "bg-black text-white" : "bg-white hover:bg-neutral-50"}`}>
+                <div className="min-w-0 flex-1">
+                  <div className={`f-text truncate text-[15px] ${r.unread > 0 ? "font-bold" : "font-semibold"}`}>{r.name}</div>
+                  <div className={`f-text mt-0.5 truncate text-[13px] ${active ? "" : r.unread > 0 ? "text-black" : "text-neutral-500"}`}>
+                    {r.last_from_admin ? "Εσύ: " : ""}{r.last_body}
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className={`f-mono text-[11px] ${active ? "" : "text-neutral-400"}`}>{fmtChatTime(r.last_at)}</span>
+                  {r.unread > 0 && !active && (
+                    <span className="f-mono flex h-[19px] min-w-[19px] items-center justify-center rounded-full bg-red-600 px-[4px] text-[10px] font-bold leading-none text-white">
+                      {r.unread > 9 ? "9+" : r.unread}
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const thread = sel ? (
+    <ChatThread key={sel.client_id} client={sel} flash={flash} onAuthFail={onAuthFail}
+      isDesktop={isDesktop}
+      onBack={() => { setSel(null); loadList(); }}
+      onChanged={threadChanged}
+      onDeleted={() => { setSel(null); threadChanged(); }} />
+  ) : null;
+
+  return (
+    <div className="px-5 sm:px-6">
+      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Μηνύματα</h2>
+      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+        Συζητήσεις με τους πελάτες. Ό,τι γράφεις φτάνει σαν ειδοποίηση στο κινητό τους.
+        Τα μηνύματα σβήνονται μόνα τους 48 ώρες μετά.
+      </p>
+
+      {isDesktop ? (
+        <div className="mt-6 grid grid-cols-[300px_minmax(0,1fr)] items-start gap-6">
+          {listView}
+          {thread || (
+            <div className="f-text flex items-center justify-center border-2 border-dashed border-neutral-300 px-6 text-center text-[15px] text-neutral-500"
+              style={{ height: "68vh", minHeight: 360 }}>
+              Διάλεξε συζήτηση από τα αριστερά ή ξεκίνα καινούρια.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-6">{thread || listView}</div>
+      )}
+      <div className="h-10" />
     </div>
   );
 }

@@ -767,6 +767,7 @@ function PrivacyPolicy({ onClose }) {
           </p>
           <p>Τις κρατήσεις, τις ακυρώσεις και τις προσελεύσεις σου στο γυμναστήριο.</p>
           <p>Τους στόχους σου, αν συμπληρώσεις την αντίστοιχη ενότητα.</p>
+          <p>Τα μηνύματα που ανταλλάσσεις με το γυμναστήριο στα «Μηνύματα».</p>
           <p>
             Έναν κωδικό της συσκευής σου, μόνο αν ενεργοποιήσεις τις ειδοποιήσεις.
             Δεν είναι το τηλέφωνό σου και δεν δείχνει πού βρίσκεσαι.
@@ -810,6 +811,9 @@ function PrivacyPolicy({ onClose }) {
           <p>
             Όσο έχεις λογαριασμό. Το παλιό ιστορικό κρατήσεων και ακυρώσεων
             καθαρίζεται περιοδικά από τη διαχείριση.
+          </p>
+          <p>
+            Τα μηνύματα σβήνονται μόνα τους 48 ώρες αφού σταλούν.
           </p>
           <p>
             Αν διαγράψεις τον λογαριασμό σου, όλα σβήνουν αμέσως και δεν
@@ -1716,6 +1720,15 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   const [notifs, setNotifs] = useState([]);
   const [cancelled, setCancelled] = useState([]);
   const [hidden, setHidden] = useState(readHidden);
+  const [chatUnread, setChatUnread] = useState(0);
+  const markChatRead = useCallback(() => setChatUnread(0), []);
+
+  /* Η refresh δεν ξαναφτιάχνεται σε κάθε αλλαγή καρτέλας, οπότε την
+     τρέχουσα καρτέλα τη διαβάζει από εδώ. */
+  const tabRef = React.useRef(tab);
+  const settingsRef = React.useRef(settingsOpen);
+  useEffect(() => { tabRef.current = tab; settingsRef.current = settingsOpen; }, [tab, settingsOpen]);
+  const lastUnreadRef = React.useRef(null);
 
   /* Ό,τι έσβησε ο πελάτης μένει σβηστό. Κρατάμε μόνο τα id που
      στέλνει ακόμα ο διακομιστής, για να μη φουσκώνει η λίστα. */
@@ -1741,7 +1754,24 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
          το κινητό του, ανοίγει κι αυτή εδώ. Ποιος περνάει το κρίνει η
          σύνδεση, όχι το κλειδί της κάρτας. */
       if (params.get("checkin") === "1" || params.get("card")) setTab("checkin");
+      /* Πάτημα σε ειδοποίηση νέου μηνύματος, με την εφαρμογή κλειστή. */
+      else if (params.get("chat") === "1") setTab("chat");
     } catch (e) { /* ignore */ }
+  }, []);
+
+  /* Ίδιο πάτημα, αλλά με την εφαρμογή ήδη ανοιχτή: ο service worker
+     φέρνει το παράθυρο μπροστά και μας λέει πού να πάμε. */
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMsg = (e) => {
+      const d = e.data;
+      if (d && d.type === "open" && typeof d.url === "string" && /[?&]chat=1/.test(d.url)) {
+        setSettingsOpen(false);
+        setTab("chat");
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
   }, []);
 
   /* Όποιο κομμάτι της εφαρμογής κι αν εντοπίσει την ακύρωση, η
@@ -1758,12 +1788,28 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     const who = await sb.rpc("client_status", { p_client_id: session.clientId });
     if (!who.error && who.data && who.data.exists === false) { onAccountGone(); return; }
 
-    const [n, mine] = await Promise.all([
+    const [n, mine, unread] = await Promise.all([
       sb.rpc("my_notifications", { p_client_id: session.clientId }),
       sb.rpc("my_bookings", { p_client_id: session.clientId }),
+      sb.rpc("my_chat_unread", { p_client_id: session.clientId }),
     ]);
     if (!n.error && n.data) { setNotifs(n.data); reportNotifications(n.data); }
     if (!mine.error && mine.data) reportBookings(mine.data.bookings || []);
+
+    if (!unread.error && typeof unread.data === "number") {
+      const count = unread.data;
+      const onChat = tabRef.current === "chat" && !settingsRef.current;
+      const prev = lastUnreadRef.current;
+      lastUnreadRef.current = count;
+      if (!onChat) setChatUnread(count);
+      /* Νέο μήνυμα από τη διαχείριση. Αν η συσκευή παίρνει push, η
+         ειδοποίηση έχει ήδη έρθει — αλλιώς τη βγάζουμε εμείς. */
+      if (prev !== null && count > prev && !onChat) {
+        hasPushSubscription().then((pushOn) => {
+          if (!pushOn) localNotify("💬 Μήνυμα από " + GYM_NAME, "Άνοιξε τα Μηνύματα για να το διαβάσεις.", "kinesis-chat");
+        });
+      }
+    }
   }, [session.clientId, onAccountGone]);
 
   /* Έλεγχος με το άνοιγμα, σε κάθε αλλαγή καρτέλας, κάθε μισό
@@ -1879,18 +1925,24 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             {tab === "book" && <BookTab session={session} flash={flash} />}
             {tab === "mine" && <MyBookings session={session} flash={flash} />}
             {tab === "checkin" && <CheckinTab session={session} flash={flash} />}
+            {tab === "chat" && <ChatTab session={session} flash={flash} onRead={markChatRead} />}
           </React.Fragment>
         )}
       </main>
 
       <nav className="shrink-0 border-t border-black bg-white" style={{ borderTopWidth: "0.5px" }}>
         <div className="flex">
-          {[["book", "Πρόγραμμα"], ["mine", "Κρατήσεις"]].map(([k, label], i) => (
+          {[["book", "Πρόγραμμα"], ["mine", "Κρατήσεις"], ["chat", "Μηνύματα"]].map(([k, label], i) => (
             <button key={k} onClick={() => { setTab(k); setSettingsOpen(false); }}
               style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))", borderLeftWidth: i === 0 ? 0 : "0.5px" }}
-              className={`f-display flex-1 border-l border-black pt-3 text-[15px] font-bold uppercase tracking-wide first:border-l-0 ${
+              className={`f-display flex flex-1 items-center justify-center gap-1.5 border-l border-black pt-3 text-[15px] font-bold uppercase tracking-wide first:border-l-0 ${
                 tab === k && !settingsOpen ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
               {label}
+              {k === "chat" && chatUnread > 0 && !(tab === "chat" && !settingsOpen) && (
+                <span className="f-mono flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#C81E1E] px-[4px] text-[10px] font-bold leading-none text-[#FFFFFF]">
+                  {chatUnread > 9 ? "9+" : chatUnread}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1911,6 +1963,174 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             flash("Έτοιμος για check-in");
           }} />
       )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Μηνύματα με το γυμναστήριο
+   Ένα κανάλι ανά πελάτη, με τη διαχείριση. Τα μηνύματα τα σβήνει
+   μόνη της η βάση 48 ώρες μετά (cron chat-cleanup), οπότε εδώ δεν
+   κρατάμε τίποτα στη συσκευή — ό,τι φέρει η my_chat είναι όλο.
+   ============================================================ */
+const CHAT_POLL_MS = 5000;
+
+function fmtChatTime(at) {
+  const d = new Date(at);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const hm = fmtClock(d);
+  if (iso(d) === iso(now)) return hm;
+  if (iso(d) === iso(addDays(now, -1))) return "Χθες " + hm;
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}, ${hm}`;
+}
+
+/* Η σελίδα είναι καρφωμένη (position:fixed) για να μην κυλάει. Στο
+   iPhone όμως το πληκτρολόγιο δεν μικραίνει τη σελίδα — απλώς την
+   καλύπτει, και το κουτί γραφής χανόταν από κάτω. Όσο είναι ανοιχτά
+   τα μηνύματα, το ύψος ακολουθεί το ορατό κομμάτι της οθόνης. */
+function useKeyboardSafeHeight() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const root = document.getElementById("root");
+    if (!vv || !root) return;
+    const fit = () => {
+      root.style.height = Math.round(vv.height) + "px";
+      if (window.scrollY || vv.offsetTop) window.scrollTo(0, 0);
+    };
+    fit();
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    return () => {
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+      root.style.height = "";
+    };
+  }, []);
+}
+
+function ChatTab({ session, flash, onRead }) {
+  const [msgs, setMsgs] = useState(null);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const listRef = React.useRef(null);
+  const stickRef = React.useRef(true);
+
+  useKeyboardSafeHeight();
+
+  const load = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    const { data, error } = await sb.rpc("my_chat", { p_client_id: session.clientId });
+    if (error || !data || !data.ok) {
+      setMsgs((prev) => (prev === null ? [] : prev));
+      return;
+    }
+    setMsgs(data.messages || []);
+    if (onRead) onRead();
+  }, [session.clientId, onRead]);
+
+  useEffect(() => {
+    load();
+    const id = setInterval(load, CHAT_POLL_MS);
+    const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load]);
+
+  /* Κατεβαίνει μόνο του στο τελευταίο μήνυμα, εκτός αν ο πελάτης έχει
+     ανέβει να διαβάσει κάτι παλιότερο — τότε δεν τον τραβάμε κάτω. */
+  useEffect(() => {
+    const el = listRef.current;
+    if (el && msgs && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [msgs]);
+
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  const send = async () => {
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true);
+    const { data, error } = await sb.rpc("send_chat", { p_client_id: session.clientId, p_body: body });
+    setSending(false);
+    if (error || !data || !data.ok) { flash((data && data.error) || "Δεν στάλθηκε. Δοκίμασε ξανά."); return; }
+    setText("");
+    stickRef.current = true;
+    setMsgs((prev) => [...(prev || []), { id: data.id, mine: true, body: body, at: data.at, read: false }]);
+    load();
+  };
+
+  /* Στον υπολογιστή το Enter στέλνει (Shift+Enter για νέα γραμμή).
+     Στο κινητό το Enter αλλάζει γραμμή, στέλνει μόνο το κουμπί. */
+  const onKeyDown = (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    let finePointer = false;
+    try { finePointer = window.matchMedia("(pointer: fine)").matches; } catch (err) { /* ignore */ }
+    if (!finePointer) return;
+    e.preventDefault();
+    send();
+  };
+
+  const list = msgs || [];
+  let lastMine = -1;
+  list.forEach((m, i) => { if (m.mine) lastMine = i; });
+  const rows = Math.min(4, Math.max(1, text.split("\n").length));
+
+  return (
+    <div className="flex h-full flex-col">
+      <div ref={listRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5">
+        <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Μηνύματα</h2>
+        <p className="f-text mt-1 text-[13px] leading-relaxed text-neutral-500">
+          Γράψε απευθείας στο γυμναστήριο. Τα μηνύματα σβήνονται μόνα τους 48 ώρες μετά.
+        </p>
+
+        {msgs === null ? (
+          <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
+        ) : list.length === 0 ? (
+          <div className="mt-5"><Empty title="Καμία συζήτηση ακόμα. Ρώτα ό,τι θέλεις." /></div>
+        ) : (
+          <div className="mt-5 space-y-3 pb-4">
+            {list.map((m, i) => (
+              <div key={m.id} className={`flex flex-col ${m.mine ? "items-end" : "items-start"}`}>
+                <div className={`f-text max-w-[82%] whitespace-pre-wrap break-words border border-black px-3.5 py-2.5 text-[15px] leading-snug ${
+                  m.mine ? "bg-black text-white" : "bg-white text-black"}`}>
+                  {m.body}
+                </div>
+                <div className="f-mono mt-1 text-[11px] text-neutral-400">
+                  {m.mine ? "" : GYM_NAME + ", "}{fmtChatTime(m.at)}
+                  {i === lastMine && m.read ? ", διαβάστηκε" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t border-black bg-white px-3 py-2.5" style={{ borderTopWidth: "0.5px" }}>
+        <div className="flex items-end gap-2">
+          <textarea value={text} rows={rows} maxLength={1000}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            onFocus={() => {
+              stickRef.current = true;
+              setTimeout(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, 250);
+            }}
+            placeholder="Γράψε μήνυμα"
+            className="f-text min-h-[48px] min-w-0 flex-1 resize-none border border-black bg-white px-3 py-[11px] text-[16px] leading-snug outline-none" />
+          <Button onClick={send} disabled={!text.trim() || sending} className="shrink-0">
+            {sending ? "…" : "Στείλε"}
+          </Button>
+        </div>
+        {text.length > 900 && (
+          <div className="f-mono mt-1 text-right text-[11px] text-neutral-400">{text.length}/1000</div>
+        )}
+      </div>
     </div>
   );
 }
