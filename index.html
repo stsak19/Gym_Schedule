@@ -1756,6 +1756,17 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   const [chatUnread, setChatUnread] = useState(0);
   const markChatRead = useCallback(() => setChatUnread(0), []);
   const [chatOn, setChatOn] = useState(CHAT_ENABLED);
+  /* Το πακέτο κρατήσεων. null = χωρίς όριο (δεν το έχει ορίσει η
+     γραμματεία). Το upcoming χρειάζεται για την κλειδωμένη οθόνη:
+     όποιος έχει ήδη κλείσει ώρα πρέπει να μπορεί να τη δει και να
+     κάνει check-in. */
+  const [credits, setCredits] = useState(null);
+  const [upcoming, setUpcoming] = useState([]);
+  const reportMine = useCallback((d) => {
+    if (!d) return;
+    setCredits(d.credits || null);
+    setUpcoming(d.bookings || []);
+  }, []);
   const chatOnRef = React.useRef(chatOn);
   useEffect(() => { chatOnRef.current = chatOn; }, [chatOn]);
 
@@ -1840,7 +1851,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
       sb.rpc("chat_is_open", {}),
     ]);
     if (!n.error && n.data) { setNotifs(n.data); reportNotifications(n.data); }
-    if (!mine.error && mine.data) reportBookings(mine.data.bookings || []);
+    if (!mine.error && mine.data) { reportBookings(mine.data.bookings || []); reportMine(mine.data); }
 
     /* Ανοιχτά ή κλειστά μηνύματα. Αν η απάντηση χαθεί, μένει ό,τι ξέραμε. */
     let chatNow = chatOnRef.current;
@@ -1864,7 +1875,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
         });
       }
     }
-  }, [session.clientId, onAccountGone, chatClosed]);
+  }, [session.clientId, onAccountGone, chatClosed, reportMine]);
 
   /* Έλεγχος με το άνοιγμα, σε κάθε αλλαγή καρτέλας, κάθε μισό
      λεπτό, και κάθε φορά που ο πελάτης επιστρέφει στην εφαρμογή. */
@@ -1993,9 +2004,9 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             onLogout={onLogout} onAccountDeleted={() => onAccountGone("self")} />
         ) : (
           <React.Fragment>
-            {tab === "book" && <BookTab session={session} flash={flash} />}
-            {tab === "mine" && <MyBookings session={session} flash={flash} />}
-            {tab === "checkin" && <CheckinTab session={session} flash={flash} />}
+            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} onMine={reportMine} />}
+            {tab === "mine" && <MyBookings session={session} flash={flash} onMine={reportMine} />}
+            {tab === "checkin" && <CheckinTab session={session} flash={flash} onMine={reportMine} />}
             {tab === "chat" && chatOn && <ChatTab session={session} flash={flash} onRead={markChatRead} onClosed={chatClosed} />}
           </React.Fragment>
         )}
@@ -2014,7 +2025,19 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
         </div>
       </nav>
 
-      {askPush && (
+      {credits && credits.remaining <= 0 && tab === "book" && !settingsOpen && !scanOpen && (
+        <OutOfCredits credits={credits}
+          hasUpcoming={upcoming.length > 0}
+          hasToday={upcoming.some((b) => b.date === iso(new Date()) && b.status === "booked")}
+          chatOn={chatOn}
+          onGo={(where) => {
+            if (where === "settings") { setSettingsOpen(true); return; }
+            setSettingsOpen(false);
+            setTab(where);
+          }} />
+      )}
+
+      {askPush && !(credits && credits.remaining <= 0 && tab === "book") && (
         <PushPrompt session={session} flash={flash}
           onClose={() => { setAskPush(false); if (clearSignedUp) clearSignedUp(); }} />
       )}
@@ -2203,7 +2226,67 @@ function ChatTab({ session, flash, onRead, onClosed }) {
   );
 }
 
-function BookTab({ session, flash }) {
+/* ============================================================
+   Πακέτο κρατήσεων
+   Η γραμματεία ορίζει πόσες κρατήσεις έχει ο πελάτης. Κάθε κράτηση
+   ξοδεύει μία, κάθε ακύρωση την επιστρέφει — όλα μέσα στη βάση
+   (trigger bookings_credit). Εδώ μόνο τα δείχνουμε.
+   ============================================================ */
+function CreditsBadge({ credits }) {
+  if (!credits) return null;
+  const empty = credits.remaining <= 0;
+  return (
+    <div className={`shrink-0 border px-3 py-2 text-center ${empty ? "border-[#C81E1E]" : "border-black"}`}
+      aria-label={`Διαθέσιμες κρατήσεις ${credits.remaining} από ${credits.total}`}>
+      <div className="f-text text-[10px] uppercase leading-none text-neutral-400">Κρατήσεις</div>
+      <div className="mt-1 whitespace-nowrap leading-none">
+        <span className={`f-mono text-[26px] ${empty ? "text-[#C81E1E]" : ""}`}>{credits.remaining}</span>
+        <span className="f-mono text-[13px] text-neutral-400">/{credits.total}</span>
+      </div>
+      <div className="f-text mt-1 text-[10px] leading-none text-neutral-400">διαθέσιμες</div>
+    </div>
+  );
+}
+
+/* Τέλειωσαν οι κρατήσεις. Το Πρόγραμμα κλειδώνει· ό,τι έχει ήδη
+   κλείσει το βλέπει κανονικά από τις «Κρατήσεις», για να μπορεί να
+   κάνει check-in ή ακύρωση (που του επιστρέφει την κράτηση). */
+function OutOfCredits({ credits, hasUpcoming, hasToday, chatOn, onGo }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-5 py-6"
+      role="dialog" aria-modal="true">
+      <div className="w-full max-w-sm border border-black bg-white p-6 text-center">
+        <div className="text-[46px] leading-none">😕</div>
+        <div className="f-display mt-3 text-[26px] font-extrabold uppercase leading-tight tracking-tight">
+          Ξέμεινες από κρατήσεις;
+        </div>
+        <p className="f-text mt-3 text-[15px] leading-relaxed text-neutral-600">
+          Ανανέωσε τη συνδρομή σου στη γραμματεία για να ξαναγεμίσεις τις κρατήσεις σου! 🎉🥳
+        </p>
+        <div className="f-mono mt-4 text-[13px] text-neutral-400">
+          {credits.used} από {credits.total} χρησιμοποιήθηκαν
+        </div>
+
+        <div className="mt-5 space-y-2">
+          {hasToday && <Button className="w-full" onClick={() => onGo("checkin")}>Check-in</Button>}
+          {hasUpcoming && (
+            <Button variant={hasToday ? "outline" : "primary"} className="w-full" onClick={() => onGo("mine")}>
+              Οι κρατήσεις μου
+            </Button>
+          )}
+          {chatOn && (
+            <Button variant={hasUpcoming ? "outline" : "primary"} className="w-full" onClick={() => onGo("chat")}>
+              Μήνυμα στη γραμματεία
+            </Button>
+          )}
+          <Button variant="ghost" className="w-full" onClick={() => onGo("settings")}>Ρυθμίσεις</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookTab({ session, flash, credits, onMine }) {
   const [date, setDate] = useState(iso(new Date()));
   const [slots, setSlots] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2223,7 +2306,7 @@ function BookTab({ session, flash }) {
       sb.rpc("my_bookings", { p_client_id: session.clientId }),
     ]);
     setLoading(false);
-    if (!mine.error && mine.data) reportBookings(mine.data.bookings || []);
+    if (!mine.error && mine.data) { reportBookings(mine.data.bookings || []); if (onMine) onMine(mine.data); }
     if (avail.error) { flash("Δεν φορτώθηκε το πρόγραμμα"); return; }
     setSlots(avail.data || []);
 
@@ -2237,7 +2320,7 @@ function BookTab({ session, flash }) {
     const wl = (mine.data && mine.data.waitlist) || [];
     for (const w of wl) if (w.date === date) waits[w.time] = true;
     setMyWaits(waits);
-  }, [date, flash, session.clientId]);
+  }, [date, flash, session.clientId, onMine]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2245,7 +2328,12 @@ function BookTab({ session, flash }) {
     setBusySlot(time);
     const { data, error } = await sb.rpc("create_booking", { p_client_id: session.clientId, p_date: date, p_time: time });
     setBusySlot(null);
-    if (error || !data?.ok) { flash(data?.error || "Κάτι πήγε στραβά"); return; }
+    if (error || !data?.ok) {
+      flash(data?.error || "Κάτι πήγε στραβά");
+      /* Τέλειωσε το πακέτο ενώ η οθόνη έδειχνε ακόμα διαθέσιμες. */
+      if (data?.no_credits) load();
+      return;
+    }
     flash(`Κράτηση ${fmtDay(date)}, ${time}`);
     load();
   };
@@ -2266,7 +2354,7 @@ function BookTab({ session, flash }) {
     setBusySlot(time);
     const { data, error } = await sb.rpc("join_waitlist", { p_client_id: session.clientId, p_date: date, p_time: time });
     setBusySlot(null);
-    if (error || !data?.ok) { flash(data?.error || "Κάτι πήγε στραβά"); return; }
+    if (error || !data?.ok) { flash(data?.error || "Κάτι πήγε στραβά"); if (data?.no_credits) load(); return; }
     flash("Μπήκες στη λίστα αναμονής");
   };
 
@@ -2286,9 +2374,12 @@ function BookTab({ session, flash }) {
         })}
       </div>
 
-      <div className="shrink-0 border-b border-black px-5 pt-4 pb-3">
-        <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
-        <p className="f-text mt-1 text-[13px] text-neutral-500">Διαθέσιμες ώρες και θέσεις που μένουν</p>
+      <div className="shrink-0 flex items-center justify-between gap-3 border-b border-black px-5 pt-4 pb-3">
+        <div className="min-w-0">
+          <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
+          <p className="f-text mt-1 text-[13px] text-neutral-500">Διαθέσιμες ώρες και θέσεις που μένουν</p>
+        </div>
+        <CreditsBadge credits={credits} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -2358,7 +2449,7 @@ function BookTab({ session, flash }) {
   );
 }
 
-function MyBookings({ session, flash }) {
+function MyBookings({ session, flash, onMine }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
@@ -2370,7 +2461,8 @@ function MyBookings({ session, flash }) {
     if (error) { flash("Δεν φορτώθηκαν οι κρατήσεις"); return; }
     setData(d);
     reportBookings((d && d.bookings) || []);
-  }, [session.clientId, flash]);
+    if (onMine) onMine(d);
+  }, [session.clientId, flash, onMine]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2566,7 +2658,7 @@ function PushPanel({ session, flash }) {
   );
 }
 
-function CheckinTab({ session, flash }) {
+function CheckinTab({ session, flash, onMine }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   /* Ποιας κράτησης το κουμπί δουλεύει αυτή τη στιγμή — μπορεί να
@@ -2589,7 +2681,8 @@ function CheckinTab({ session, flash }) {
     if (error) { flash("Κάτι πήγε στραβά"); return; }
     setData(d);
     reportBookings((d && d.bookings) || []);
-  }, [session.clientId, flash]);
+    if (onMine) onMine(d);
+  }, [session.clientId, flash, onMine]);
 
   useEffect(() => { load(); }, [load]);
 

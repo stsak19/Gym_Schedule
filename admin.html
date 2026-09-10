@@ -2151,6 +2151,263 @@ function CardPanel({ client, flash, onAuthFail, onChanged }) {
 }
 
 /* ---------- People ---------- */
+/* ---------- Πακέτο κρατήσεων ----------
+   Ο διαχειριστής ορίζει πόσες κρατήσεις έχει ο πελάτης. Η βάση
+   ξοδεύει μία σε κάθε κράτηση και την επιστρέφει σε κάθε ακύρωση
+   (trigger bookings_credit), και κρατάει κάθε κίνηση στον credit_log.
+   Στην ανανέωση ο credit_log του πελάτη σβήνεται και ξεκινάει καθαρός. */
+const CREDIT_KIND = {
+  renew: "Ανανέωση πακέτου",
+  use: "Κράτηση",
+  refund: "Επιστροφή (ακύρωση)",
+  adjust: "Διόρθωση συνόλου",
+};
+const CREDIT_ROLE = { anon: "Πελάτης", authenticated: "Γραμματεία", service_role: "Σύστημα", system: "Σύστημα" };
+const CREDIT_PRESETS = [4, 8, 12, 16, 20];
+
+function athensParts(at) {
+  const d = new Date(at);
+  if (isNaN(d.getTime())) return { date: "", time: "" };
+  const f = new Intl.DateTimeFormat("el-GR", {
+    timeZone: "Europe/Athens", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const g = (t) => (f.find((x) => x.type === t) || {}).value || "";
+  return { date: `${g("day")}/${g("month")}/${g("year")}`, time: `${g("hour")}:${g("minute")}` };
+}
+
+function csvCell(v) {
+  const t = v === null || v === undefined ? "" : String(v);
+  return /[";\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+
+/* Ελληνικό Excel: ερωτηματικό για διαχωριστικό και BOM στην αρχή,
+   αλλιώς τα ελληνικά βγαίνουν σπασμένα. */
+function downloadCreditsCsv(rows, filename) {
+  const head = ["Πελάτης", "Κινητό", "Ημερομηνία", "Ώρα", "Κίνηση", "Κράτηση για",
+    "Σύνολο πακέτου", "Χρησιμοποιημένες", "Διαθέσιμες", "Από"];
+  const lines = [head.map(csvCell).join(";")];
+  for (const r of rows) {
+    const when = athensParts(r.at);
+    let slot = "";
+    if (r.booking_date) {
+      const [y, m, d] = String(r.booking_date).split("-");
+      slot = `${d}/${m}/${y} ${r.booking_time || ""}`.trim();
+    }
+    lines.push([
+      r.name, r.phone, when.date, when.time, CREDIT_KIND[r.kind] || r.kind, slot,
+      r.total, r.used, r.remaining, CREDIT_ROLE[r.by_role] || r.by_role || "",
+    ].map(csvCell).join(";"));
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 4000);
+}
+
+function fileStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function fileSafe(name) {
+  return String(name || "pelatis").trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, "-") || "pelatis";
+}
+
+async function exportCredits({ clientId, name, flash, onAuthFail }) {
+  const { data, error } = await rpc("admin_credit_log", { p_client_id: clientId || null });
+  if (error === "AUTH") { onAuthFail(); return; }
+  if (error) { flash("Δεν έγινε η εξαγωγή"); return; }
+  const rows = data || [];
+  if (rows.length === 0) { flash("Δεν υπάρχουν κινήσεις για εξαγωγή"); return; }
+  downloadCreditsCsv(rows, clientId
+    ? `kratiseis-${fileSafe(name)}-${fileStamp()}.csv`
+    : `kratiseis-olon-${fileStamp()}.csv`);
+  flash(`Εξαγωγή ${rows.length} κινήσεων`);
+}
+
+/* Πίτα: μαύρο οι διαθέσιμες, γκρι οι χρησιμοποιημένες. Τα χρώματα
+   περνάνε από text-* ώστε να τα γυρίζει και το σκούρο θέμα. */
+function CreditsPie({ total, used, size = 180 }) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeUsed = Math.min(safeTotal, Math.max(0, Number(used) || 0));
+  const left = safeTotal - safeUsed;
+  const pct = safeTotal ? (left / safeTotal) * 100 : 0;
+  const r = 15.9155;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 42 42" width={size} height={size} aria-hidden="true">
+        <circle cx="21" cy="21" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-neutral-300" />
+        {pct > 0 && (
+          <circle cx="21" cy="21" r={r} fill="none" stroke="currentColor" strokeWidth="6"
+            className="text-black"
+            strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset="25" />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="f-mono text-[38px] leading-none tracking-tight">{left}</div>
+        <div className="f-text mt-1 text-[11px] uppercase tracking-wide text-neutral-500">διαθέσιμες</div>
+      </div>
+    </div>
+  );
+}
+
+function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
+  const has = client.credits_total !== null && client.credits_total !== undefined;
+  const total = has ? client.credits_total : 0;
+  const used = has ? (client.credits_used || 0) : 0;
+  const [mode, setMode] = useState(null); // null | "renew" | "adjust" | "clear"
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => { setMode(null); setValue(""); }, [client.id]);
+
+  const open = (m) => {
+    setMode(m);
+    setValue(m === "adjust" ? String(total) : has ? String(total) : "");
+  };
+
+  const save = async () => {
+    const n = parseInt(value, 10);
+    if (mode !== "clear" && !(n >= 1 && n <= 999)) { flash("Βάλε αριθμό από 1 έως 999"); return; }
+    setBusy(true);
+    const { data, error } = await rpc("admin_set_credits", {
+      p_client_id: client.id,
+      p_total: mode === "clear" ? null : n,
+      p_mode: mode,
+    });
+    setBusy(false);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data?.ok) { flash(data?.error || "Δεν αποθηκεύτηκε"); return; }
+    onUpdated({
+      credits_total: data.credits_total,
+      credits_used: data.credits_used,
+      credits_since: data.credits_since,
+    });
+    flash(mode === "renew" ? (has ? "Το πακέτο ανανεώθηκε" : "Το πακέτο ορίστηκε")
+      : mode === "adjust" ? "Το σύνολο άλλαξε" : "Ο πελάτης δεν έχει πια όριο");
+    setMode(null); setValue("");
+  };
+
+  const doExport = async () => {
+    setExporting(true);
+    await exportCredits({ clientId: client.id, name: client.name, flash, onAuthFail });
+    setExporting(false);
+  };
+
+  const since = client.credits_since ? athensParts(client.credits_since) : null;
+
+  return (
+    <div className="mt-12 border-t-2 border-black pt-6">
+      <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+        Πακέτο κρατήσεων
+      </h3>
+
+      {!has ? (
+        <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+          Χωρίς όριο — ο πελάτης κλείνει όσες κρατήσεις θέλει. Όρισε πακέτο για να μετράει
+          η εφαρμογή: με την τελευταία κράτηση κλειδώνει και του ζητάει ανανέωση.
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+          <CreditsPie total={total} used={used} />
+          <div className="w-full space-y-3">
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
+              <span className="flex items-center gap-2 f-text text-[14px]">
+                <span className="inline-block h-3.5 w-3.5 bg-black" />Διαθέσιμες
+              </span>
+              <span className="f-mono text-[18px]">{Math.max(0, total - used)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
+              <span className="flex items-center gap-2 f-text text-[14px]">
+                <span className="inline-block h-3.5 w-3.5 text-neutral-300" style={{ background: "currentColor" }} />
+                Χρησιμοποιημένες
+              </span>
+              <span className="f-mono text-[18px]">{used}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="f-text text-[14px] text-neutral-500">Σύνολο πακέτου</span>
+              <span className="f-mono text-[18px]">{total}</span>
+            </div>
+            {since && (
+              <div className="f-mono text-[12px] text-neutral-400">Από {since.date} · {since.time}</div>
+            )}
+            {total - used <= 0 && (
+              <div className="f-text border-2 border-red-600 bg-red-50 px-3 py-2 text-[13px] text-red-800">
+                Τέλειωσαν — η εφαρμογή του πελάτη είναι κλειδωμένη μέχρι την ανανέωση.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === null ? (
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button onClick={() => open("renew")}>{has ? "🔄 Ανανέωση" : "➕ Ορισμός πακέτου"}</Button>
+          {has && <Button variant="outline" onClick={() => open("adjust")}>Διόρθωση συνόλου</Button>}
+          {has && (
+            <Button variant="outline" disabled={exporting} onClick={doExport}>
+              <IconDownload size={14} /><span className="ml-2">{exporting ? "Εξαγωγή…" : "Εξαγωγή"}</span>
+            </Button>
+          )}
+          {has && <Button variant="ghost" onClick={() => open("clear")}>Κατάργηση ορίου</Button>}
+        </div>
+      ) : mode === "clear" ? (
+        <div className="mt-5 border-2 border-black p-4">
+          <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
+            Ο/Η <strong>{client.name}</strong> θα κλείνει χωρίς όριο. Η πίτα και το ιστορικό του
+            πακέτου σβήνονται — αν τα θέλεις, κάνε πρώτα εξαγωγή.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={busy} onClick={save}>{busy ? "…" : "Ναι, χωρίς όριο"}</Button>
+            <Button variant="ghost" onClick={() => setMode(null)}>Άκυρο</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 border-2 border-black p-4">
+          <h4 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+            {mode === "adjust" ? "Διόρθωση συνόλου" : has ? "Ανανέωση πακέτου" : "Νέο πακέτο"}
+          </h4>
+          <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+            {mode === "adjust"
+              ? `Αλλάζει μόνο το σύνολο του τρέχοντος πακέτου. Οι ${used} που χρησιμοποίησε μένουν.`
+              : has
+                ? "Ξεκινάει καινούριο πακέτο από το μηδέν. Η τωρινή πίτα και το ιστορικό της σβήνονται οριστικά — αν τα θέλεις, κάνε πρώτα εξαγωγή."
+                : "Πόσες κρατήσεις αγόρασε ο πελάτης;"}
+          </p>
+          {mode === "renew" && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {CREDIT_PRESETS.map((n) => (
+                <button key={n} onClick={() => setValue(String(n))}
+                  className={`f-mono h-10 min-w-[48px] border-2 px-3 text-[15px] ${
+                    value === String(n) ? "border-black bg-black text-white" : "border-neutral-300 bg-white text-black hover:border-black"}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input value={value}
+              onChange={(e) => setValue(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              inputMode="numeric" placeholder="π.χ. 12"
+              className="f-mono h-12 w-32 border-2 border-black px-4 text-[16px] outline-none" />
+            <span className="f-text text-[14px] text-neutral-500">κρατήσεις</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={busy || !value} onClick={save}>
+              {busy ? "Αποθήκευση…" : mode === "adjust" ? "Αποθήκευση" : has ? "Ανανέωση" : "Ορισμός"}
+            </Button>
+            <Button variant="ghost" onClick={() => setMode(null)}>Άκυρο</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function People({ flash, onAuthFail }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
@@ -2166,6 +2423,13 @@ function People({ flash, onAuthFail }) {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ first_name: "", last_name: "", phone: "", email: "" });
   const [saving, setSaving] = useState(false);
+  const [exportingAll, setExportingAll] = useState(false);
+
+  const exportAll = async () => {
+    setExportingAll(true);
+    await exportCredits({ clientId: null, flash, onAuthFail });
+    setExportingAll(false);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2321,6 +2585,11 @@ function People({ flash, onAuthFail }) {
           <Kpi label="Ακυρώσεις" value={sel.cancels} />
           <Kpi label="Δεν ήρθε" value={sel.noshows} />
         </div>
+        {sel.credits_total !== null && sel.credits_total !== undefined && (
+          <div className="f-mono mt-3 text-[13px] text-neutral-500">
+            Πακέτο: {Math.max(0, sel.credits_total - (sel.credits_used || 0))} διαθέσιμες από {sel.credits_total} — λεπτομέρειες στο τέλος της σελίδας
+          </div>
+        )}
 
         <h3 className="f-display mt-10 text-[14px] font-bold uppercase tracking-wide text-neutral-500">Ιστορικό</h3>
         {history === null ? (
@@ -2416,6 +2685,10 @@ function People({ flash, onAuthFail }) {
             </div>
           )}
         </div>
+
+        <CreditsPanel client={sel} flash={flash} onAuthFail={onAuthFail}
+          onUpdated={(patch) => { setSel((prev) => (prev ? { ...prev, ...patch } : prev)); load(); }} />
+
         <div className="h-10" />
       </div>
     );
@@ -2423,7 +2696,12 @@ function People({ flash, onAuthFail }) {
 
   return (
     <div className="px-5 sm:px-6">
-      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Πελάτες</h2>
+      <div className="flex flex-wrap items-end justify-between gap-3 pt-6">
+        <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">Πελάτες</h2>
+        <Button variant="outline" size="sm" disabled={exportingAll} onClick={exportAll}>
+          <IconDownload size={14} /><span className="ml-2">{exportingAll ? "Εξαγωγή…" : "Εξαγωγή πακέτων όλων"}</span>
+        </Button>
+      </div>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Αναζήτηση με όνομα"
         className="f-text mt-4 h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
 
@@ -2445,6 +2723,12 @@ function People({ flash, onAuthFail }) {
               </div>
               <div className="f-mono shrink-0 text-[12px] text-neutral-500">
                 {r.total} κρατ. · {r.checkins} ci · {r.noshows} απ.
+                {r.credits_total !== null && r.credits_total !== undefined && (
+                  <span className={`ml-2 border px-1.5 py-0.5 text-[10px] ${
+                    r.credits_total - (r.credits_used || 0) <= 0 ? "border-red-600 text-red-700" : "border-black"}`}>
+                    {Math.max(0, r.credits_total - (r.credits_used || 0))}/{r.credits_total}
+                  </span>
+                )}
                 {r.has_card && <span className="ml-2 border border-neutral-300 px-1.5 py-0.5 text-[10px] uppercase">κάρτα</span>}
               </div>
             </button>
