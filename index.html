@@ -163,6 +163,10 @@ let CHECKIN_AFTER_MIN = 30;
    με τις ίδιες ρυθμίσεις, ως data URL — κενό σημαίνει «χωρίς λογότυπο»
    και τότε δεν δείχνουμε κουτί ούτε κενό τετράγωνο. */
 let GYM_LOGO = "";
+/* Τα μηνύματα τα ανοίγει και τα κλείνει η διαχείριση. Κλειστά σημαίνει
+   ότι το εικονίδιο δεν φαίνεται και ο πελάτης δεν μπορεί να γράψει —
+   το ίδιο επιβάλλει και η βάση μέσα στη send_chat. */
+let CHAT_ENABLED = true;
 const SESSION_KEY = "kinesis_session";
 const THEME_KEY = "kinesis_theme";
 
@@ -1112,6 +1116,15 @@ function ScanIcon() {
   );
 }
 
+function ChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z" />
+    </svg>
+  );
+}
+
 /* ── Σάρωση QR μέσα στην εφαρμογή ────────────────────────────
    Στο iPhone, όποιο QR κι αν σκανάρεις με την κάμερα του κινητού,
    ο σύνδεσμος ανοίγει πάντα στο Safari — ποτέ στην εφαρμογή της
@@ -1722,6 +1735,18 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   const [hidden, setHidden] = useState(readHidden);
   const [chatUnread, setChatUnread] = useState(0);
   const markChatRead = useCallback(() => setChatUnread(0), []);
+  const [chatOn, setChatOn] = useState(CHAT_ENABLED);
+  const chatOnRef = React.useRef(chatOn);
+  useEffect(() => { chatOnRef.current = chatOn; }, [chatOn]);
+
+  /* Η διαχείριση έκλεισε τα μηνύματα: φεύγει το εικονίδιο, και αν ο
+     πελάτης ήταν μέσα στη συζήτηση, γυρίζει στο Πρόγραμμα. */
+  const chatClosed = useCallback(() => {
+    CHAT_ENABLED = false;
+    setChatOn(false);
+    setChatUnread(0);
+    if (tabRef.current === "chat") setTab("book");
+  }, []);
 
   /* Η refresh δεν ξαναφτιάχνεται σε κάθε αλλαγή καρτέλας, οπότε την
      τρέχουσα καρτέλα τη διαβάζει από εδώ. */
@@ -1755,7 +1780,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
          σύνδεση, όχι το κλειδί της κάρτας. */
       if (params.get("checkin") === "1" || params.get("card")) setTab("checkin");
       /* Πάτημα σε ειδοποίηση νέου μηνύματος, με την εφαρμογή κλειστή. */
-      else if (params.get("chat") === "1") setTab("chat");
+      else if (params.get("chat") === "1" && CHAT_ENABLED) setTab("chat");
     } catch (e) { /* ignore */ }
   }, []);
 
@@ -1765,7 +1790,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     if (!("serviceWorker" in navigator)) return;
     const onMsg = (e) => {
       const d = e.data;
-      if (d && d.type === "open" && typeof d.url === "string" && /[?&]chat=1/.test(d.url)) {
+      if (d && d.type === "open" && typeof d.url === "string" && /[?&]chat=1/.test(d.url) && chatOnRef.current) {
         setSettingsOpen(false);
         setTab("chat");
       }
@@ -1788,15 +1813,24 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     const who = await sb.rpc("client_status", { p_client_id: session.clientId });
     if (!who.error && who.data && who.data.exists === false) { onAccountGone(); return; }
 
-    const [n, mine, unread] = await Promise.all([
+    const [n, mine, unread, open] = await Promise.all([
       sb.rpc("my_notifications", { p_client_id: session.clientId }),
       sb.rpc("my_bookings", { p_client_id: session.clientId }),
       sb.rpc("my_chat_unread", { p_client_id: session.clientId }),
+      sb.rpc("chat_is_open", {}),
     ]);
     if (!n.error && n.data) { setNotifs(n.data); reportNotifications(n.data); }
     if (!mine.error && mine.data) reportBookings(mine.data.bookings || []);
 
-    if (!unread.error && typeof unread.data === "number") {
+    /* Ανοιχτά ή κλειστά μηνύματα. Αν η απάντηση χαθεί, μένει ό,τι ξέραμε. */
+    let chatNow = chatOnRef.current;
+    if (!open.error && typeof open.data === "boolean") {
+      chatNow = open.data;
+      if (!chatNow && chatOnRef.current) chatClosed();
+      else if (chatNow && !chatOnRef.current) { CHAT_ENABLED = true; setChatOn(true); lastUnreadRef.current = null; }
+    }
+
+    if (chatNow && !unread.error && typeof unread.data === "number") {
       const count = unread.data;
       const onChat = tabRef.current === "chat" && !settingsRef.current;
       const prev = lastUnreadRef.current;
@@ -1810,7 +1844,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
         });
       }
     }
-  }, [session.clientId, onAccountGone]);
+  }, [session.clientId, onAccountGone, chatClosed]);
 
   /* Έλεγχος με το άνοιγμα, σε κάθε αλλαγή καρτέλας, κάθε μισό
      λεπτό, και κάθε φορά που ο πελάτης επιστρέφει στην εφαρμογή. */
@@ -1868,6 +1902,23 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {chatOn && (
+            <button aria-label="Μηνύματα"
+              onClick={() => {
+                const onChat = tab === "chat" && !settingsOpen;
+                setSettingsOpen(false);
+                setTab(onChat ? "book" : "chat");
+              }}
+              className={`relative flex h-11 w-11 shrink-0 items-center justify-center border border-black ${
+                tab === "chat" && !settingsOpen ? "bg-black text-white" : "bg-white text-black"}`}>
+              <ChatIcon />
+              {chatUnread > 0 && !(tab === "chat" && !settingsOpen) && (
+                <span className="f-mono absolute -right-[7px] -top-[7px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#C81E1E] px-[4px] text-[10px] font-bold leading-none text-[#FFFFFF]">
+                  {chatUnread > 9 ? "9+" : chatUnread}
+                </span>
+              )}
+            </button>
+          )}
           <button onClick={() => setScanOpen(true)} aria-label="Σάρωση QR"
             className="flex h-11 w-11 shrink-0 items-center justify-center border border-black bg-white text-black">
             <ScanIcon />
@@ -1925,24 +1976,19 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             {tab === "book" && <BookTab session={session} flash={flash} />}
             {tab === "mine" && <MyBookings session={session} flash={flash} />}
             {tab === "checkin" && <CheckinTab session={session} flash={flash} />}
-            {tab === "chat" && <ChatTab session={session} flash={flash} onRead={markChatRead} />}
+            {tab === "chat" && chatOn && <ChatTab session={session} flash={flash} onRead={markChatRead} onClosed={chatClosed} />}
           </React.Fragment>
         )}
       </main>
 
       <nav className="shrink-0 border-t border-black bg-white" style={{ borderTopWidth: "0.5px" }}>
         <div className="flex">
-          {[["book", "Πρόγραμμα"], ["mine", "Κρατήσεις"], ["chat", "Μηνύματα"]].map(([k, label], i) => (
+          {[["book", "Πρόγραμμα"], ["mine", "Κρατήσεις"]].map(([k, label], i) => (
             <button key={k} onClick={() => { setTab(k); setSettingsOpen(false); }}
               style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))", borderLeftWidth: i === 0 ? 0 : "0.5px" }}
               className={`f-display flex flex-1 items-center justify-center gap-1.5 border-l border-black pt-3 text-[15px] font-bold uppercase tracking-wide first:border-l-0 ${
                 tab === k && !settingsOpen ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
               {label}
-              {k === "chat" && chatUnread > 0 && !(tab === "chat" && !settingsOpen) && (
-                <span className="f-mono flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#C81E1E] px-[4px] text-[10px] font-bold leading-none text-[#FFFFFF]">
-                  {chatUnread > 9 ? "9+" : chatUnread}
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -2009,7 +2055,7 @@ function useKeyboardSafeHeight() {
   }, []);
 }
 
-function ChatTab({ session, flash, onRead }) {
+function ChatTab({ session, flash, onRead, onClosed }) {
   const [msgs, setMsgs] = useState(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -2021,13 +2067,14 @@ function ChatTab({ session, flash, onRead }) {
   const load = useCallback(async () => {
     if (document.visibilityState !== "visible") return;
     const { data, error } = await sb.rpc("my_chat", { p_client_id: session.clientId });
+    if (!error && data && data.closed) { if (onClosed) onClosed(); return; }
     if (error || !data || !data.ok) {
       setMsgs((prev) => (prev === null ? [] : prev));
       return;
     }
     setMsgs(data.messages || []);
     if (onRead) onRead();
-  }, [session.clientId, onRead]);
+  }, [session.clientId, onRead, onClosed]);
 
   useEffect(() => {
     load();
@@ -2059,6 +2106,7 @@ function ChatTab({ session, flash, onRead }) {
     setSending(true);
     const { data, error } = await sb.rpc("send_chat", { p_client_id: session.clientId, p_body: body });
     setSending(false);
+    if (!error && data && data.closed) { flash(data.error || "Τα μηνύματα είναι κλειστά"); if (onClosed) onClosed(); return; }
     if (error || !data || !data.ok) { flash((data && data.error) || "Δεν στάλθηκε. Δοκίμασε ξανά."); return; }
     setText("");
     stickRef.current = true;
@@ -2689,6 +2737,7 @@ async function loadAppSettings() {
   if (!data) return;
   if (data.gym_name) GYM_NAME = data.gym_name;
   if (data.logo_url) GYM_LOGO = data.logo_url;
+  if (data.chat_enabled === false) CHAT_ENABLED = false;
   if (data.max_days_ahead) MAX_DAYS_AHEAD = data.max_days_ahead;
   if (data.checkin_before_min) CHECKIN_BEFORE_MIN = data.checkin_before_min;
   if (data.checkin_after_min) CHECKIN_AFTER_MIN = data.checkin_after_min;
