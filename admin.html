@@ -3301,58 +3301,78 @@ function fmtWhen(iso) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/* Διαλέγει έναν και μόνο παραλήπτη. Ίδια αναζήτηση με τους Πελάτες
-   (`admin_clients`), απλώς κρατάει μόνο τα πρώτα αποτελέσματα. */
+/* Διαλέγει έναν και μόνο παραλήπτη. Ντροπ-ντάουν με όλους τους
+   πελάτες — στο κινητό ανοίγει ως ρόδα επιλογής. Το κουτί αναζήτησης
+   από πάνω απλώς στενεύει τη λίστα όταν οι πελάτες είναι πολλοί. */
 function OneClientPicker({ clientId, clientName, onPick, onClear, onAuthFail }) {
+  const [all, setAll] = useState(null);
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState([]);
-  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
-    const term = q.trim();
-    if (clientId || term.length < 2) { setRows([]); setSearching(false); return; }
-    setSearching(true);
-    const t = setTimeout(async () => {
-      const { data, error } = await rpc("admin_clients", { p_search: term });
-      setSearching(false);
+    let alive = true;
+    (async () => {
+      const { data, error } = await rpc("admin_clients", { p_search: "" });
+      if (!alive) return;
       if (error === "AUTH") { onAuthFail(); return; }
-      setRows((data || []).slice(0, 6));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [q, clientId, onAuthFail]);
+      setAll(data || []);
+    })();
+    return () => { alive = false; };
+  }, [onAuthFail]);
 
-  if (clientId) {
-    return (
-      <div className="mt-2 flex flex-wrap items-center gap-3 border-2 border-black px-4 py-3">
-        <div className="f-text min-w-0 text-[15px] font-semibold">{clientName || "Ο πελάτης"}</div>
-        <Button variant="ghost" size="sm" onClick={() => { setQ(""); setRows([]); onClear(); }}>
-          Αλλαγή
-        </Button>
-      </div>
-    );
+  const list = useMemo(() => {
+    const rows = all || [];
+    const term = q.trim().toLowerCase();
+    const hit = term
+      ? rows.filter((c) =>
+          String(c.name || "").toLowerCase().includes(term) ||
+          String(c.phone || "").includes(term))
+      : rows;
+    /* Ο ήδη επιλεγμένος μένει πάντα μέσα, αλλιώς το select θα άδειαζε
+       μόλις γραφτεί κάτι στην αναζήτηση. */
+    if (clientId && !hit.some((c) => c.id === clientId)) {
+      const sel = rows.find((c) => c.id === clientId);
+      if (sel) return [sel].concat(hit);
+    }
+    return hit;
+  }, [all, q, clientId]);
+
+  if (all === null) {
+    return <div className="f-text mt-2 text-[14px] text-neutral-400">Φόρτωση πελατών…</div>;
+  }
+
+  if (all.length === 0) {
+    return <div className="f-text mt-2 text-[14px] text-neutral-500">Δεν υπάρχουν πελάτες ακόμα.</div>;
   }
 
   return (
     <div className="mt-2">
-      <input value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder="Όνομα ή κινητό"
-        className="f-text h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
-      {q.trim().length >= 2 && (
-        rows.length > 0 ? (
-          <div className="mt-2 divide-y divide-neutral-200 border-2 border-black">
-            {rows.map((c) => (
-              <button key={c.id} onClick={() => { onPick(c); setQ(""); setRows([]); }}
-                className="block w-full px-4 py-3 text-left hover:bg-neutral-100">
-                <div className="f-text text-[15px] font-semibold">{c.name}</div>
-                <div className="f-mono mt-0.5 text-[12px] text-neutral-500">{c.phone || "—"}</div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="f-text mt-2 text-[13px] text-neutral-500">
-            {searching ? "Ψάχνω…" : "Κανένας πελάτης μ' αυτό."}
-          </div>
-        )
+      {all.length > 8 && (
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="Φιλτράρισμα — όνομα ή κινητό"
+          className="f-text mb-2 h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
+      )}
+
+      <select
+        value={clientId || ""}
+        onChange={(e) => {
+          const id = e.target.value;
+          if (!id) { onClear(); return; }
+          const c = (all || []).find((x) => x.id === id);
+          if (c) onPick(c);
+        }}
+        className="f-text h-12 w-full border-2 border-black bg-white px-3 text-[15px] outline-none">
+        <option value="">— Διάλεξε πελάτη —</option>
+        {list.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}{c.phone ? " · " + c.phone : ""}
+          </option>
+        ))}
+      </select>
+
+      {clientId && (
+        <div className="f-text mt-2 text-[13px] text-neutral-500">
+          Παραλήπτης: <strong className="text-black">{clientName || "—"}</strong>
+        </div>
       )}
     </div>
   );
