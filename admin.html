@@ -2176,35 +2176,233 @@ function athensParts(at) {
   return { date: `${g("day")}/${g("month")}/${g("year")}`, time: `${g("hour")}:${g("minute")}` };
 }
 
-function csvCell(v) {
-  const t = v === null || v === undefined ? "" : String(v);
-  return /[";\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+/* ---------- Εξαγωγή σε PDF ----------
+   Το pdfmake φτιάχνει κανονικούς πίνακες (γραμμές, στήλες, κεφαλίδα που
+   ξαναβγαίνει σε κάθε σελίδα) και η γραμματοσειρά του, Roboto, έχει
+   ελληνικά. Φορτώνεται μόνο τη στιγμή της εξαγωγής — είναι ~1 MB και
+   δεν χρειάζεται να το κατεβάζει η σελίδα σε κάθε άνοιγμα. */
+const PDFMAKE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js";
+const PDFMAKE_FONTS = "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/vfs_fonts.min.js";
+let pdfmakeLoad = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("network"));
+    document.head.appendChild(el);
+  });
 }
 
-/* Ελληνικό Excel: ερωτηματικό για διαχωριστικό και BOM στην αρχή,
-   αλλιώς τα ελληνικά βγαίνουν σπασμένα. */
-function downloadCreditsCsv(rows, filename) {
-  const head = ["Πελάτης", "Κινητό", "Ημερομηνία", "Ώρα", "Κίνηση", "Κράτηση για",
-    "Σύνολο πακέτου", "Χρησιμοποιημένες", "Διαθέσιμες", "Από"];
-  const lines = [head.map(csvCell).join(";")];
-  for (const r of rows) {
-    const when = athensParts(r.at);
-    let slot = "";
-    if (r.booking_date) {
-      const [y, m, d] = String(r.booking_date).split("-");
-      slot = `${d}/${m}/${y} ${r.booking_time || ""}`.trim();
-    }
-    lines.push([
-      r.name, r.phone, when.date, when.time, CREDIT_KIND[r.kind] || r.kind, slot,
-      r.total, r.used, r.remaining, CREDIT_ROLE[r.by_role] || r.by_role || "",
-    ].map(csvCell).join(";"));
+function loadPdfMake() {
+  if (window.pdfMake && window.pdfMake.vfs && Object.keys(window.pdfMake.vfs).length) {
+    return Promise.resolve(window.pdfMake);
   }
-  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const href = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = href; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(href), 4000);
+  if (!pdfmakeLoad) {
+    pdfmakeLoad = loadScript(PDFMAKE_SRC)
+      .then(() => loadScript(PDFMAKE_FONTS))
+      .then(() => {
+        if (!window.pdfMake) throw new Error("no pdfmake");
+        return window.pdfMake;
+      })
+      .catch((e) => { pdfmakeLoad = null; throw e; });
+  }
+  return pdfmakeLoad;
+}
+
+const PDF_INK = "#111111";
+const PDF_MUTED = "#6B6B6B";
+const PDF_LINE = "#BDBDBD";
+const PDF_ZEBRA = "#F3F3F3";
+const PDF_RED = "#B42318";
+const PDF_RED_BG = "#FDECEA";
+const KIND_COLOR = { use: PDF_INK, refund: "#1B7F3B", renew: "#1F4E99", adjust: "#8A5A00" };
+
+const pdfGrid = {
+  fillColor: (row) => (row === 0 ? PDF_INK : row % 2 === 0 ? PDF_ZEBRA : null),
+  hLineWidth: () => 0.5,
+  vLineWidth: () => 0.5,
+  hLineColor: () => PDF_LINE,
+  vLineColor: () => PDF_LINE,
+  paddingLeft: () => 5,
+  paddingRight: () => 5,
+  paddingTop: () => 4,
+  paddingBottom: () => 4,
+};
+
+const th = (text, alignment = "left") => ({ text, bold: true, color: "#FFFFFF", fontSize: 8.5, alignment });
+
+function slotText(r) {
+  if (!r.booking_date) return "—";
+  const [y, m, d] = String(r.booking_date).split("-");
+  return `${d}/${m}/${y}  ${r.booking_time || ""}`.trim();
+}
+
+/* Οι κινήσεις έρχονται ταξινομημένες ανά πελάτη και χρόνο. Η τελευταία
+   κίνηση κάθε πελάτη είναι και η τωρινή του εικόνα. */
+function groupCredits(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = r.client_id || (r.name + "|" + r.phone);
+    if (!map.has(key)) map.set(key, { name: r.name, phone: r.phone, rows: [] });
+    map.get(key).rows.push(r);
+  }
+  return Array.from(map.values()).map((g) => {
+    const last = g.rows[g.rows.length - 1];
+    const renew = g.rows.find((x) => x.kind === "renew");
+    return {
+      ...g,
+      total: last.total,
+      used: last.used,
+      remaining: last.remaining,
+      since: renew ? athensParts(renew.at) : athensParts(g.rows[0].at),
+    };
+  });
+}
+
+function summaryStrip(g) {
+  const cell = (label, value, danger) => ({
+    stack: [
+      { text: label, fontSize: 7.5, color: danger ? PDF_RED : PDF_MUTED },
+      { text: String(value), fontSize: 15, bold: true, color: danger ? PDF_RED : PDF_INK, margin: [0, 2, 0, 0] },
+    ],
+    fillColor: danger ? PDF_RED_BG : null,
+    margin: [4, 3, 4, 3],
+  });
+  return {
+    table: {
+      widths: ["*", "*", "*", "*"],
+      body: [[
+        cell("ΣΥΝΟΛΟ ΠΑΚΕΤΟΥ", g.total),
+        cell("ΧΡΗΣΙΜΟΠΟΙΗΜΕΝΕΣ", g.used),
+        cell("ΔΙΑΘΕΣΙΜΕΣ", g.remaining, Number(g.remaining) <= 0),
+        cell("ΑΝΑΝΕΩΣΗ ΠΑΚΕΤΟΥ", `${g.since.date} ${g.since.time}`),
+      ]],
+    },
+    layout: { hLineWidth: () => 0.8, vLineWidth: () => 0.8, hLineColor: () => PDF_INK, vLineColor: () => PDF_INK },
+    margin: [0, 6, 0, 8],
+  };
+}
+
+function detailTable(g) {
+  const body = [[
+    th("#", "center"), th("Ημερομηνία"), th("Ώρα"), th("Κίνηση"), th("Κράτηση για"),
+    th("Από"), th("Σύνολο", "right"), th("Χρησιμοπ.", "right"), th("Διαθέσιμες", "right"),
+  ]];
+  g.rows.forEach((r, i) => {
+    const when = athensParts(r.at);
+    const zero = Number(r.remaining) <= 0;
+    body.push([
+      { text: String(i + 1), alignment: "center", color: PDF_MUTED },
+      when.date,
+      when.time,
+      { text: CREDIT_KIND[r.kind] || r.kind, color: KIND_COLOR[r.kind] || PDF_INK, bold: r.kind === "renew" },
+      slotText(r),
+      CREDIT_ROLE[r.by_role] || r.by_role || "",
+      { text: r.total === null || r.total === undefined ? "—" : String(r.total), alignment: "right" },
+      { text: String(r.used), alignment: "right" },
+      zero
+        ? { text: "0", alignment: "right", bold: true, color: PDF_RED, fillColor: PDF_RED_BG }
+        : { text: String(r.remaining), alignment: "right", bold: true },
+    ]);
+  });
+  return {
+    table: { headerRows: 1, dontBreakRows: true, widths: [22, 62, 36, "*", 92, 70, 48, 58, 62], body },
+    layout: pdfGrid,
+  };
+}
+
+function creditsDoc(rows, clientId) {
+  const groups = groupCredits(rows);
+  const now = athensParts(new Date().toISOString());
+  const content = [
+    {
+      columns: [
+        { stack: [
+          { text: "ΠΑΚΕΤΑ ΚΡΑΤΗΣΕΩΝ", fontSize: 18, bold: true },
+          { text: GYM_NAME, fontSize: 10, color: PDF_MUTED, margin: [0, 2, 0, 0] },
+        ] },
+        { stack: [
+          { text: clientId ? groups[0].name : `Όλοι οι πελάτες (${groups.length})`, fontSize: 12, bold: true, alignment: "right" },
+          { text: clientId ? groups[0].phone : "", fontSize: 9, color: PDF_MUTED, alignment: "right" },
+          { text: `Εξαγωγή: ${now.date} ${now.time}`, fontSize: 8.5, color: PDF_MUTED, alignment: "right", margin: [0, 2, 0, 0] },
+        ] },
+      ],
+    },
+    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 786, y2: 0, lineWidth: 1.5, lineColor: PDF_INK }], margin: [0, 8, 0, 10] },
+  ];
+
+  if (!clientId) {
+    const body = [[
+      th("Πελάτης"), th("Κινητό"), th("Ανανέωση πακέτου"),
+      th("Σύνολο", "right"), th("Χρησιμοποιημένες", "right"), th("Διαθέσιμες", "right"), th("Κινήσεις", "right"),
+    ]];
+    for (const g of groups) {
+      const zero = Number(g.remaining) <= 0;
+      body.push([
+        { text: g.name, bold: true },
+        g.phone,
+        `${g.since.date} ${g.since.time}`,
+        { text: String(g.total ?? "—"), alignment: "right" },
+        { text: String(g.used), alignment: "right" },
+        zero
+          ? { text: "0", alignment: "right", bold: true, color: PDF_RED, fillColor: PDF_RED_BG }
+          : { text: String(g.remaining), alignment: "right", bold: true },
+        { text: String(g.rows.length), alignment: "right", color: PDF_MUTED },
+      ]);
+    }
+    content.push({ text: "Σύνοψη", fontSize: 12, bold: true, margin: [0, 0, 0, 6] });
+    content.push({
+      table: { headerRows: 1, dontBreakRows: true, widths: ["*", 80, 110, 55, 90, 70, 55], body },
+      layout: pdfGrid,
+    });
+  }
+
+  groups.forEach((g, i) => {
+    if (!clientId) {
+      content.push({
+        text: g.name + "  ·  " + g.phone, fontSize: 12, bold: true,
+        margin: [0, 18, 0, 0],
+        pageBreak: i === 0 ? "before" : undefined,
+        headlineLevel: 1,
+      });
+    }
+    content.push(summaryStrip(g));
+    content.push(detailTable(g));
+  });
+
+  content.push({
+    text: [
+      { text: "Πώς διαβάζεται: ", bold: true },
+      "Κράτηση = ο πελάτης έκλεισε ώρα και ξοδεύτηκε μία. ",
+      "Επιστροφή = ακύρωσε και η κράτηση γύρισε πίσω. ",
+      "Ανανέωση πακέτου = ξεκίνησε νέο πακέτο από το μηδέν. ",
+      "Διόρθωση συνόλου = άλλαξε μόνο το σύνολο. ",
+      "Οι στήλες Σύνολο, Χρησιμοπ. και Διαθέσιμες δείχνουν την κατάσταση αμέσως μετά από κάθε κίνηση.",
+    ],
+    fontSize: 8, color: PDF_MUTED, margin: [0, 14, 0, 0],
+  });
+
+  return {
+    pageSize: "A4",
+    pageOrientation: "landscape",
+    pageMargins: [28, 32, 28, 36],
+    info: { title: "Πακέτα κρατήσεων — " + GYM_NAME },
+    defaultStyle: { font: "Roboto", fontSize: 9, color: PDF_INK },
+    /* Ο τίτλος πελάτη να μη μένει μόνος του στο κάτω μέρος της σελίδας. */
+    pageBreakBefore: (node, following) =>
+      node.headlineLevel === 1 && following.length < 3,
+    footer: (page, pages) => ({
+      columns: [
+        { text: GYM_NAME + " · Πακέτα κρατήσεων", color: PDF_MUTED },
+        { text: `Σελίδα ${page} / ${pages}`, alignment: "right", color: PDF_MUTED },
+      ],
+      fontSize: 8,
+      margin: [28, 12, 28, 0],
+    }),
+    content,
+  };
 }
 
 function fileStamp() {
@@ -2222,10 +2420,20 @@ async function exportCredits({ clientId, name, flash, onAuthFail }) {
   if (error) { flash("Δεν έγινε η εξαγωγή"); return; }
   const rows = data || [];
   if (rows.length === 0) { flash("Δεν υπάρχουν κινήσεις για εξαγωγή"); return; }
-  downloadCreditsCsv(rows, clientId
-    ? `kratiseis-${fileSafe(name)}-${fileStamp()}.csv`
-    : `kratiseis-olon-${fileStamp()}.csv`);
-  flash(`Εξαγωγή ${rows.length} κινήσεων`);
+
+  let pdfMake;
+  try { pdfMake = await loadPdfMake(); }
+  catch (e) { flash("Δεν φόρτωσε το PDF — δες τη σύνδεση"); return; }
+
+  try {
+    const filename = clientId
+      ? `kratiseis-${fileSafe(name)}-${fileStamp()}.pdf`
+      : `kratiseis-olon-${fileStamp()}.pdf`;
+    pdfMake.createPdf(creditsDoc(rows, clientId)).download(filename);
+    flash("Το PDF κατέβηκε");
+  } catch (e) {
+    flash("Δεν φτιάχτηκε το PDF: " + (e.message || e));
+  }
 }
 
 /* Πίτα: μαύρο οι διαθέσιμες, γκρι οι χρησιμοποιημένες. Τα χρώματα
@@ -2301,7 +2509,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
   const since = client.credits_since ? athensParts(client.credits_since) : null;
 
   return (
-    <div className="mt-12 border-t-2 border-black pt-6">
+    <div className="mt-10 border-t-2 border-black pt-6">
       <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
         Πακέτο κρατήσεων
       </h3>
@@ -2350,7 +2558,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
           {has && <Button variant="outline" onClick={() => open("adjust")}>Διόρθωση συνόλου</Button>}
           {has && (
             <Button variant="outline" disabled={exporting} onClick={doExport}>
-              <IconDownload size={14} /><span className="ml-2">{exporting ? "Εξαγωγή…" : "Εξαγωγή"}</span>
+              <IconDownload size={14} /><span className="ml-2">{exporting ? "Εξαγωγή…" : "Εξαγωγή PDF"}</span>
             </Button>
           )}
           {has && <Button variant="ghost" onClick={() => open("clear")}>Κατάργηση ορίου</Button>}
@@ -2585,11 +2793,9 @@ function People({ flash, onAuthFail }) {
           <Kpi label="Ακυρώσεις" value={sel.cancels} />
           <Kpi label="Δεν ήρθε" value={sel.noshows} />
         </div>
-        {sel.credits_total !== null && sel.credits_total !== undefined && (
-          <div className="f-mono mt-3 text-[13px] text-neutral-500">
-            Πακέτο: {Math.max(0, sel.credits_total - (sel.credits_used || 0))} διαθέσιμες από {sel.credits_total} — λεπτομέρειες στο τέλος της σελίδας
-          </div>
-        )}
+
+        <CreditsPanel client={sel} flash={flash} onAuthFail={onAuthFail}
+          onUpdated={(patch) => { setSel((prev) => (prev ? { ...prev, ...patch } : prev)); load(); }} />
 
         <h3 className="f-display mt-10 text-[14px] font-bold uppercase tracking-wide text-neutral-500">Ιστορικό</h3>
         {history === null ? (
@@ -2686,9 +2892,6 @@ function People({ flash, onAuthFail }) {
           )}
         </div>
 
-        <CreditsPanel client={sel} flash={flash} onAuthFail={onAuthFail}
-          onUpdated={(patch) => { setSel((prev) => (prev ? { ...prev, ...patch } : prev)); load(); }} />
-
         <div className="h-10" />
       </div>
     );
@@ -2699,7 +2902,7 @@ function People({ flash, onAuthFail }) {
       <div className="flex flex-wrap items-end justify-between gap-3 pt-6">
         <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">Πελάτες</h2>
         <Button variant="outline" size="sm" disabled={exportingAll} onClick={exportAll}>
-          <IconDownload size={14} /><span className="ml-2">{exportingAll ? "Εξαγωγή…" : "Εξαγωγή πακέτων όλων"}</span>
+          <IconDownload size={14} /><span className="ml-2">{exportingAll ? "Εξαγωγή…" : "PDF πακέτων όλων"}</span>
         </Button>
       </div>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Αναζήτηση με όνομα"
@@ -2928,6 +3131,21 @@ function Access({ flash, onAuthFail }) {
     catch (e) { flash("Η αντιγραφή δεν είναι διαθέσιμη"); }
   };
 
+  /* Γράφει τον σύνδεσμο check-in κατευθείαν στο tag, με Web NFC. */
+  const [writing, setWriting] = useState(false);
+  const writeTag = async (text) => {
+    if (!text || !NFC_OK) return;
+    setWriting(true);
+    try {
+      const w = new NDEFReader();
+      await w.write({ records: [{ recordType: "url", data: text }] });
+      flash("Το tag γράφτηκε");
+    } catch (e) {
+      flash("Δεν γράφτηκε: " + (e.message || e));
+    }
+    setWriting(false);
+  };
+
   if (loading) return <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>;
   const checkinUrl = url ? url + (url.includes("?") ? "&" : "?") + "checkin=1" : "";
 
@@ -2983,10 +3201,45 @@ function Access({ flash, onAuthFail }) {
       )}
 
       <div className="mt-9 max-w-xl border-t-2 border-black pt-6">
-        <h3 className="f-display text-[14px] font-bold uppercase tracking-wide">NFC tag</h3>
-        <ol className="f-text mt-3 space-y-2 text-[13px] leading-relaxed text-neutral-600">
+        <h3 className="f-display text-[14px] font-bold uppercase tracking-wide">NFC tag για check-in</h3>
+        <p className="f-text mt-2 max-w-[54ch] text-[13px] leading-relaxed text-neutral-600">
+          Ο πελάτης ακουμπάει το κινητό του στο tag και ανοίγει η εφαρμογή κατευθείαν στο check-in.
+          Αυτός είναι ο σύνδεσμος που γράφεται πάνω στο tag:
+        </p>
+
+        {checkinUrl ? (
+          <div className="mt-3 border-2 border-black p-4">
+            <div className="f-display text-[11px] font-bold uppercase tracking-wide text-neutral-500">Σύνδεσμος check-in</div>
+            <div className="f-mono mt-1 select-all break-all text-[14px]">{checkinUrl}</div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => copy(checkinUrl)}>Αντιγραφή συνδέσμου</Button>
+              {NFC_OK && (
+                <Button variant="outline" size="sm" disabled={writing} onClick={() => writeTag(checkinUrl)}>
+                  {writing ? "Ακούμπησε το tag…" : "Γράψιμο στο tag"}
+                </Button>
+              )}
+            </div>
+            {NFC_OK ? (
+              <p className="f-text mt-3 text-[12px] leading-relaxed text-neutral-500">
+                Πάτα «Γράψιμο στο tag» και ακούμπησε το άγραφο tag στην πλάτη του κινητού.
+              </p>
+            ) : (
+              <p className="f-text mt-3 text-[12px] leading-relaxed text-neutral-500">
+                Από αυτή τη συσκευή το tag δεν γράφεται απευθείας (θέλει Android με Chrome). Από iPhone:
+                αντέγραψε τον σύνδεσμο, άνοιξε τη δωρεάν εφαρμογή <strong>NFC Tools</strong> → Εγγραφή →
+                Προσθήκη εγγραφής → URL, επικόλλησέ τον και ακούμπησε το tag.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="f-text mt-3 text-[13px] text-neutral-500">
+            Συμπλήρωσε πρώτα τη διεύθυνση της εφαρμογής πιο πάνω και πάτα Αποθήκευση.
+          </p>
+        )}
+
+        <ol className="f-text mt-5 space-y-2 text-[13px] leading-relaxed text-neutral-600">
           <li>1. Πάρε NTAG213 ή NTAG215 sticker.</li>
-          <li>2. Γράψε πάνω του NDEF record τύπου URL με τον σύνδεσμο check-in.</li>
+          <li>2. Γράψε πάνω του τον σύνδεσμο check-in (NDEF record τύπου URL).</li>
           <li>3. Κόλλησέ το στην είσοδο, δίπλα στο τυπωμένο QR.</li>
         </ol>
         <p className="f-text mt-4 max-w-[54ch] text-[13px] leading-relaxed text-neutral-600">
