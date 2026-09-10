@@ -3278,9 +3278,13 @@ const AUDIENCES = [
   ["all", "Όλοι οι πελάτες"],
   ["marketing", "Μόνο όσοι δέχονται ενημερώσεις"],
   ["active", "Όσοι έχουν κράτηση μπροστά"],
+  ["one", "Σε έναν πελάτη"],
 ];
 
-const EMPTY_ANN = { id: null, title: "", body: "", audience: "all", send_at: "" };
+const EMPTY_ANN = {
+  id: null, title: "", body: "", audience: "all", send_at: "",
+  client_id: null, client_name: "",
+};
 
 /* Η βάση δίνει UTC, το input θέλει τοπική ώρα χωρίς ζώνη. */
 function isoToLocalInput(iso) {
@@ -3295,6 +3299,63 @@ function fmtWhen(iso) {
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* Διαλέγει έναν και μόνο παραλήπτη. Ίδια αναζήτηση με τους Πελάτες
+   (`admin_clients`), απλώς κρατάει μόνο τα πρώτα αποτελέσματα. */
+function OneClientPicker({ clientId, clientName, onPick, onClear, onAuthFail }) {
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (clientId || term.length < 2) { setRows([]); setSearching(false); return; }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      const { data, error } = await rpc("admin_clients", { p_search: term });
+      setSearching(false);
+      if (error === "AUTH") { onAuthFail(); return; }
+      setRows((data || []).slice(0, 6));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, clientId, onAuthFail]);
+
+  if (clientId) {
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-3 border-2 border-black px-4 py-3">
+        <div className="f-text min-w-0 text-[15px] font-semibold">{clientName || "Ο πελάτης"}</div>
+        <Button variant="ghost" size="sm" onClick={() => { setQ(""); setRows([]); onClear(); }}>
+          Αλλαγή
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <input value={q} onChange={(e) => setQ(e.target.value)}
+        placeholder="Όνομα ή κινητό"
+        className="f-text h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
+      {q.trim().length >= 2 && (
+        rows.length > 0 ? (
+          <div className="mt-2 divide-y divide-neutral-200 border-2 border-black">
+            {rows.map((c) => (
+              <button key={c.id} onClick={() => { onPick(c); setQ(""); setRows([]); }}
+                className="block w-full px-4 py-3 text-left hover:bg-neutral-100">
+                <div className="f-text text-[15px] font-semibold">{c.name}</div>
+                <div className="f-mono mt-0.5 text-[12px] text-neutral-500">{c.phone || "—"}</div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="f-text mt-2 text-[13px] text-neutral-500">
+            {searching ? "Ψάχνω…" : "Κανένας πελάτης μ' αυτό."}
+          </div>
+        )
+      )}
+    </div>
+  );
 }
 
 function Announcements({ flash, onAuthFail }) {
@@ -3321,6 +3382,7 @@ function Announcements({ flash, onAuthFail }) {
     setForm({
       id: r.id, title: r.title || "", body: r.body || "",
       audience: r.audience || "all", send_at: isoToLocalInput(r.send_at),
+      client_id: r.client_id || null, client_name: r.client_name || "",
     });
     setOpen(true);
   };
@@ -3329,6 +3391,8 @@ function Announcements({ flash, onAuthFail }) {
     const title = form.title.trim();
     const body = form.body.trim();
     if (!body) { flash("Γράψε πρώτα το μήνυμα"); return; }
+    const one = form.audience === "one";
+    if (one && !form.client_id) { flash("Διάλεξε πρώτα τον πελάτη"); return; }
     let when = null;
     if (!sendNow) {
       if (!form.send_at) { flash("Διάλεξε πότε θα σταλεί"); return; }
@@ -3338,11 +3402,16 @@ function Announcements({ flash, onAuthFail }) {
     const { data, error } = await rpc("admin_save_announcement", {
       p_id: form.id, p_title: title, p_body: body,
       p_audience: form.audience, p_send_at: when, p_send_now: !!sendNow,
+      p_client_id: one ? form.client_id : null,
     });
     setBusy("");
     if (error === "AUTH") { onAuthFail(); return; }
     if (error || !data || !data.ok) { flash((data && data.error) || "Δεν αποθηκεύτηκε"); return; }
-    flash(sendNow ? `Στάλθηκε σε ${data.recipients} πελάτες` : "Μπήκε στο πρόγραμμα");
+    flash(
+      !sendNow ? "Μπήκε στο πρόγραμμα"
+        : one ? `Στάλθηκε στον/στην ${form.client_name || "πελάτη"}`
+        : `Στάλθηκε σε ${data.recipients} πελάτες`
+    );
     setOpen(false);
     setForm(EMPTY_ANN);
     load();
@@ -3359,9 +3428,10 @@ function Announcements({ flash, onAuthFail }) {
     load();
   };
 
-  const audienceLabel = (k) => {
-    const hit = AUDIENCES.find((a) => a[0] === k);
-    return hit ? hit[1] : k;
+  const audienceLabel = (r) => {
+    if (r.audience === "one") return "Προσωπικά" + (r.client_name ? ` προς ${r.client_name}` : "");
+    const hit = AUDIENCES.find((a) => a[0] === r.audience);
+    return hit ? hit[1] : r.audience;
   };
 
   return (
@@ -3370,7 +3440,7 @@ function Announcements({ flash, onAuthFail }) {
       <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
         Δικά σου μηνύματα προς τους πελάτες — κλειστά για διακοπές, καινούριο ομαδικό,
         αλλαγή ωραρίου. Φτάνουν σαν ειδοποίηση στο κινητό τους και φαίνονται και μέσα
-        στην εφαρμογή.
+        στην εφαρμογή. Μπορείς να στείλεις και προσωπικά, σε έναν μόνο πελάτη.
       </p>
 
       {!open && (
@@ -3399,13 +3469,34 @@ function Announcements({ flash, onAuthFail }) {
           <label className="f-text mt-2 block text-[13px] text-neutral-500">Σε ποιους</label>
           <div className="mt-2 flex flex-wrap gap-2">
             {AUDIENCES.map(([k, label]) => (
-              <button key={k} onClick={() => set("audience", k)}
+              <button key={k}
+                onClick={() => setForm((prev) => ({
+                  ...prev, audience: k,
+                  client_id: k === "one" ? prev.client_id : null,
+                  client_name: k === "one" ? prev.client_name : "",
+                }))}
                 className={`f-display border-2 border-black px-3 py-2 text-[11px] font-bold uppercase tracking-wide ${
                   form.audience === k ? "bg-black text-white" : "bg-white text-neutral-500"}`}>
                 {label}
               </button>
             ))}
           </div>
+
+          {form.audience === "one" && (
+            <>
+              <label className="f-text mt-4 block text-[13px] text-neutral-500">Ποιος πελάτης</label>
+              <OneClientPicker
+                clientId={form.client_id}
+                clientName={form.client_name}
+                onPick={(c) => setForm((prev) => ({ ...prev, client_id: c.id, client_name: c.name }))}
+                onClear={() => setForm((prev) => ({ ...prev, client_id: null, client_name: "" }))}
+                onAuthFail={onAuthFail}
+              />
+              <p className="f-text mt-2 max-w-[56ch] text-[12px] leading-relaxed text-neutral-500">
+                Το μήνυμα το βλέπει μόνο αυτός. Κανείς άλλος δεν παίρνει τίποτα.
+              </p>
+            </>
+          )}
 
           <label className="f-text mt-4 block text-[13px] text-neutral-500">Πότε να σταλεί</label>
           <input type="datetime-local" value={form.send_at} onChange={(e) => set("send_at", e.target.value)}
@@ -3444,9 +3535,9 @@ function Announcements({ flash, onAuthFail }) {
                   <div className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">{r.body}</div>
                   <div className="f-mono mt-2 text-[12px] text-neutral-500">
                     {r.sent_at
-                      ? `Στάλθηκε ${fmtWhen(r.sent_at)} · ${r.recipients} παραλήπτες`
+                      ? `Στάλθηκε ${fmtWhen(r.sent_at)}` + (r.audience === "one" ? "" : ` · ${r.recipients} παραλήπτες`)
                       : `Φεύγει ${fmtWhen(r.send_at)}`}
-                    {" · "}{audienceLabel(r.audience)}
+                    {" · "}{audienceLabel(r)}
                   </div>
                 </div>
                 <span className={`f-display shrink-0 border-2 border-black px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
