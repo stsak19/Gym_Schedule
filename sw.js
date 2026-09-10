@@ -8,7 +8,7 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "app-v10";
+const VERSION = "app-v11";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
 
@@ -24,7 +24,6 @@ const SHELL_FILES = [
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
-  "./entry-bg.jpg",
 ];
 
 /* Βιβλιοθήκες και γραμματοσειρές από τρίτους. Οι διευθύνσεις έχουν
