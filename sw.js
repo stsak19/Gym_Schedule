@@ -8,9 +8,14 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "app-v5";
+const VERSION = "app-v6";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
+
+/* Η επωνυμία δεν δένεται με την έκδοση: αν την κρατούσαμε στο RUNTIME
+   θα σβηνόταν σε κάθε ανέβασμα και το εικονίδιο στην αρχική οθόνη θα
+   ξαναγύριζε για λίγο στο εφεδρικό όνομα. */
+const BRAND_CACHE = "brand-store";
 
 /* Τα δικά μας αρχεία. Μπαίνουν ένα-ένα: αν κάποιο λείπει ή έχει
    λάθος όνομα, δεν ρίχνει όλη την εγκατάσταση μαζί του. */
@@ -44,7 +49,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
       .then((names) => Promise.all(
-        names.filter((n) => n !== SHELL && n !== RUNTIME).map((n) => caches.delete(n))
+        names
+          .filter((n) => n !== SHELL && n !== RUNTIME && n !== BRAND_CACHE)
+          .map((n) => caches.delete(n))
       ))
       .then(() => self.clients.claim())
   );
@@ -90,6 +97,48 @@ async function cacheFirst(request) {
   return res;
 }
 
+/* Το manifest.json είναι στατικό αρχείο, αλλά το όνομα που δείχνει το
+   κινητό κάτω από το εικονίδιο στην αρχική οθόνη το ορίζει ο
+   διαχειριστής. Οπότε το πιάνουμε στον αέρα και του αλλάζουμε το όνομα
+   πριν φτάσει στον browser. Έτσι το αρχείο μένει κανονικό
+   manifest.json — με blob ή data URL κάποιοι browsers αρνούνται να
+   προχωρήσουν στην εγκατάσταση. */
+async function brandedManifest(request) {
+  let res = null;
+  try {
+    res = await fetch(request);
+    const copy = res.clone();
+    caches.open(SHELL).then((c) => c.put(request, copy)).catch(() => { /* αγνόησε */ });
+  } catch (e) {
+    res = await caches.match(request);
+  }
+  if (!res) throw new Error("no manifest");
+
+  try {
+    const m = await res.clone().json();
+    const brand = await readBrand();
+    m.name = brand;
+    m.short_name = brand;
+
+    /* Μόνο κανονική διεύθυνση. Λογότυπο σε data URL το κόβουν τα
+       περισσότερα κινητά και χαλάει όλη η εγκατάσταση. */
+    const logo = await readLogo();
+    if (logo && /^https?:/i.test(logo)) {
+      m.icons = [{ src: logo, sizes: "512x512", type: "image/png" }].concat(m.icons || []);
+    }
+
+    return new Response(JSON.stringify(m), {
+      headers: {
+        "content-type": "application/manifest+json; charset=utf-8",
+        "cache-control": "no-cache",
+      },
+    });
+  } catch (e) {
+    /* Χαλασμένο JSON: κάλλιο το αρχικό παρά τίποτα. */
+    return res;
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
@@ -103,6 +152,11 @@ self.addEventListener("fetch", (event) => {
   if (url.hostname.endsWith("supabase.co")) return;
 
   const sameOrigin = url.origin === self.location.origin;
+
+  if (sameOrigin && url.pathname.endsWith("manifest.json")) {
+    event.respondWith(brandedManifest(req).catch(() => caches.match(req)));
+    return;
+  }
 
   if (req.mode === "navigate" || (sameOrigin && url.pathname.endsWith(".html"))) {
     event.respondWith(networkFirst(req));
@@ -123,36 +177,56 @@ self.addEventListener("fetch", (event) => {
    Ο browser τον σβήνει και τον ξαναξυπνάει όποτε θέλει, άρα μια απλή
    μεταβλητή δεν κρατάει — το γράφουμε στη μνήμη του browser. */
 const BRAND_URL = "./__brand";
+const LOGO_URL = "./__logo";
 const BRAND_FALLBACK = "Γυμναστήριο";
 let brandMemo = null;
+let logoMemo = null;
 
-async function readBrand() {
-  if (brandMemo) return brandMemo;
+async function readStored(key) {
   try {
-    const cache = await caches.open(RUNTIME);
-    const res = await cache.match(BRAND_URL);
+    const cache = await caches.open(BRAND_CACHE);
+    const res = await cache.match(key);
     if (res) {
-      const name = (await res.text()).trim();
-      if (name) brandMemo = name;
+      const value = (await res.text()).trim();
+      if (value) return value;
     }
   } catch (e) { /* αγνόησε */ }
-  return brandMemo || BRAND_FALLBACK;
+  return null;
 }
 
-async function writeBrand(name) {
-  if (!name || typeof name !== "string") return;
-  brandMemo = name.trim();
+async function writeStored(key, value) {
   try {
-    const cache = await caches.open(RUNTIME);
-    await cache.put(BRAND_URL, new Response(brandMemo, {
+    const cache = await caches.open(BRAND_CACHE);
+    await cache.put(key, new Response(value, {
       headers: { "content-type": "text/plain; charset=utf-8" },
     }));
   } catch (e) { /* αγνόησε */ }
 }
 
+async function readBrand() {
+  if (!brandMemo) brandMemo = await readStored(BRAND_URL);
+  return brandMemo || BRAND_FALLBACK;
+}
+
+async function readLogo() {
+  if (!logoMemo) logoMemo = await readStored(LOGO_URL);
+  return logoMemo || "";
+}
+
+async function writeBrand(name, logo) {
+  if (name && typeof name === "string" && name.trim()) {
+    brandMemo = name.trim();
+    await writeStored(BRAND_URL, brandMemo);
+  }
+  if (typeof logo === "string" && logo.trim()) {
+    logoMemo = logo.trim();
+    await writeStored(LOGO_URL, logoMemo);
+  }
+}
+
 self.addEventListener("message", (event) => {
   const msg = event.data;
-  if (msg && msg.type === "brand") event.waitUntil(writeBrand(msg.name));
+  if (msg && msg.type === "brand") event.waitUntil(writeBrand(msg.name, msg.logo));
 });
 
 /* Έρχεται push από τον διακομιστή. Δείξ' το. */

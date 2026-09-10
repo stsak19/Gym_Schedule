@@ -2503,19 +2503,27 @@ function applyLogoToPage() {
 
 /* Οι push ειδοποιήσεις τις δείχνει ο service worker, που δεν βλέπει
    τις ρυθμίσεις. Του περνάμε το όνομα σε κάθε άνοιγμα. */
+/* Το ίδιο όνομα χρειάζεται και για το manifest.json, που το σερβίρει
+   πλέον ο service worker. Το στέλνουμε αμέσως αν ελέγχει ήδη τη
+   σελίδα, αλλιώς μόλις ξυπνήσει. */
 function tellServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
+  const msg = { type: "brand", name: GYM_NAME, logo: GYM_LOGO || "" };
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage(msg);
+  }
   navigator.serviceWorker.ready
-    .then((reg) => { if (reg.active) reg.active.postMessage({ type: "brand", name: GYM_NAME }); })
+    .then((reg) => { if (reg.active) reg.active.postMessage(msg); })
     .catch(() => { /* αγνόησε */ });
 }
 
-/* Το manifest.json είναι στατικό αρχείο, οπότε το ξαναγράφουμε στη
-   μνήμη με το σωστό όνομα και το δίνουμε ως blob. Οι διαδρομές των
-   εικονιδίων γίνονται απόλυτες, αλλιώς το blob δεν ξέρει πού να τις
-   ψάξει. Αν κάτι πάει στραβά, μένει το αρχικό link — χάνεται μόνο το
-   όνομα, όχι η εγκατάσταση. */
+/* Εφεδρικός δρόμος, μόνο για την πρώτη επίσκεψη: ο service worker δεν
+   έχει προλάβει να αναλάβει τη σελίδα, οπότε το manifest.json έρχεται
+   ακόμη σκέτο. Το ξαναγράφουμε στη μνήμη ως blob. Από τη δεύτερη
+   επίσκεψη και μετά το αναλαμβάνει ο service worker — το blob είναι
+   λιγότερο αξιόπιστο και δεν το βάζουμε μπροστά του χωρίς λόγο. */
 async function applyBrandToManifest() {
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) return;
   try {
     const link = document.querySelector('link[rel="manifest"]');
     if (!link) return;
