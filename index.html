@@ -1055,9 +1055,18 @@ function SignIn({ onLogin, flash }) {
     onLogin({ clientId: data.client_id, firstName: fn, lastName: ln }, true);
   };
 
+  /* Η σελίδα δεν κυλάει ποτέ (βλ. CSS στην αρχή), οπότε η οθόνη
+     σύνδεσης/εγγραφής έχει δικό της κυλιόμενο κουτί. Η φόρμα εγγραφής
+     είναι ψηλότερη από την οθόνη, ειδικά όταν ανοίγει το πληκτρολόγιο.
+     Το εσωτερικό min-h-full κρατάει το ίδιο στήσιμο (πάνω τίτλος, κάτω
+     κουμπιά) όταν χωράει, και απλώς μακραίνει όταν δεν χωράει. */
   return (
-    <div className="mx-auto flex h-full max-w-md flex-col justify-between overflow-hidden px-6 pb-20"
-      style={{ paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}>
+    <div className="h-full overflow-y-auto">
+    <div className="mx-auto flex min-h-full max-w-md flex-col justify-between px-6"
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top) + 24px)",
+        paddingBottom: "calc(env(safe-area-inset-bottom) + 80px)",
+      }}>
       <div>
         <div className="f-display text-[13px] font-bold uppercase tracking-[0.18em] text-neutral-400">{GYM_NAME}</div>
         <div className="mt-5"><ScoreboardClock /></div>
@@ -1169,6 +1178,7 @@ function SignIn({ onLogin, flash }) {
       </div>
 
       {policy && <PrivacyPolicy onClose={() => setPolicy(false)} />}
+    </div>
     </div>
   );
 }
