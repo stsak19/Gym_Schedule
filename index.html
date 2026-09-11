@@ -1767,6 +1767,13 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     setCredits(d.credits || null);
     setUpcoming(d.bookings || []);
   }, []);
+  /* Μηδέν υπόλοιπο δεν σημαίνει πάντα ότι τελείωσε το πακέτο. Αν ο
+     πελάτης έχει ακόμα ώρες μπροστά του, απλώς τις έκλεισε όλες από
+     νωρίς: το Πρόγραμμα μένει ανοιχτό, με μπάρα και χωρίς νέα κράτηση.
+     Το πλήρες παράθυρο βγαίνει μόνο όταν δεν του έμεινε καμία ώρα. */
+  const outOfCredits = !!credits && credits.remaining <= 0;
+  const hasAhead = upcoming.some((b) => b.status === "booked");
+  const lockBook = outOfCredits && !hasAhead;
   const chatOnRef = React.useRef(chatOn);
   useEffect(() => { chatOnRef.current = chatOn; }, [chatOn]);
 
@@ -2004,7 +2011,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             onLogout={onLogout} onAccountDeleted={() => onAccountGone("self")} />
         ) : (
           <React.Fragment>
-            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} onMine={reportMine} />}
+            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} />}
             {tab === "mine" && <MyBookings session={session} flash={flash} onMine={reportMine} />}
             {tab === "checkin" && <CheckinTab session={session} flash={flash} onMine={reportMine} />}
             {tab === "chat" && chatOn && <ChatTab session={session} flash={flash} onRead={markChatRead} onClosed={chatClosed} />}
@@ -2025,7 +2032,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
         </div>
       </nav>
 
-      {credits && credits.remaining <= 0 && tab === "book" && !settingsOpen && !scanOpen && (
+      {lockBook && tab === "book" && !settingsOpen && !scanOpen && (
         <OutOfCredits credits={credits}
           hasUpcoming={upcoming.length > 0}
           hasToday={upcoming.some((b) => b.date === iso(new Date()) && b.status === "booked")}
@@ -2037,7 +2044,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
           }} />
       )}
 
-      {askPush && !(credits && credits.remaining <= 0 && tab === "book") && (
+      {askPush && !(lockBook && tab === "book") && (
         <PushPrompt session={session} flash={flash}
           onClose={() => { setAskPush(false); if (clearSignedUp) clearSignedUp(); }} />
       )}
@@ -2248,9 +2255,9 @@ function CreditsBadge({ credits }) {
   );
 }
 
-/* Τέλειωσαν οι κρατήσεις. Το Πρόγραμμα κλειδώνει· ό,τι έχει ήδη
-   κλείσει το βλέπει κανονικά από τις «Κρατήσεις», για να μπορεί να
-   κάνει check-in ή ακύρωση (που του επιστρέφει την κράτηση). */
+/* Τέλειωσε το πακέτο και δεν έχει καμία ώρα μπροστά του. Μόνο τότε
+   κλειδώνει το Πρόγραμμα. Αν έχει ακόμα κλεισμένες ώρες, βλέπει την
+   μπάρα του BookTab αντί γι' αυτό. */
 function OutOfCredits({ credits, hasUpcoming, hasToday, chatOn, onGo }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 px-5 py-6"
@@ -2286,13 +2293,17 @@ function OutOfCredits({ credits, hasUpcoming, hasToday, chatOn, onGo }) {
   );
 }
 
-function BookTab({ session, flash, credits, onMine }) {
+function BookTab({ session, flash, credits, hasAhead, onMine }) {
   const [date, setDate] = useState(iso(new Date()));
   const [slots, setSlots] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busySlot, setBusySlot] = useState(null);
   const [mine, setMine] = useState({});
   const [myWaits, setMyWaits] = useState({});
+  /* Έκλεισε όλες τις ώρες του πακέτου. Βλέπει το πρόγραμμα και μπορεί
+     να ακυρώσει, αλλά όχι να κλείσει νέα ώρα ή να μπει σε αναμονή —
+     το ίδιο απορρίπτει και ο διακομιστής. */
+  const noCredits = !!credits && credits.remaining <= 0;
 
   const days = useMemo(() => {
     const base = new Date(); base.setHours(0, 0, 0, 0);
@@ -2382,6 +2393,19 @@ function BookTab({ session, flash, credits, onMine }) {
         <CreditsBadge credits={credits} />
       </div>
 
+      {noCredits && (
+        <div className="shrink-0 border-b border-black bg-neutral-100 px-5 py-3" role="status">
+          <div className="f-display text-[15px] font-bold leading-snug">
+            {hasAhead ? "Έκλεισες όλες τις ώρες του πακέτου σου 💪" : "Τελείωσε το πακέτο σου"}
+          </div>
+          <p className="f-text mt-1 text-[13px] leading-relaxed text-neutral-600">
+            {hasAhead
+              ? "Αν ακυρώσεις μία, σου επιστρέφεται και μπορείς να κλείσεις άλλη. Για περισσότερες, ανανέωσε στη γραμματεία."
+              : "Ανανέωσε στη γραμματεία για να κλείσεις νέες ώρες."}
+          </p>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto">
       {loading ? (
         <div className="f-text px-5 py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
@@ -2428,12 +2452,12 @@ function BookTab({ session, flash, credits, onMine }) {
                         Ακύρωση
                       </Button>
                     ) : full ? (
-                      <Button variant="outline" size="sm" disabled={isBusy || myWaits[s.slot_time]}
+                      <Button variant="outline" size="sm" disabled={isBusy || myWaits[s.slot_time] || (noCredits && !myWaits[s.slot_time])}
                         onClick={() => waitlist(s.slot_time)}>
                         {myWaits[s.slot_time] ? "Σε αναμονή" : "Αναμονή"}
                       </Button>
                     ) : (
-                      <Button size="sm" disabled={isBusy} onClick={() => book(s.slot_time)}>Κράτηση</Button>
+                      <Button size="sm" disabled={isBusy || noCredits} onClick={() => book(s.slot_time)}>Κράτηση</Button>
                     )}
                   </div>
                 </div>
