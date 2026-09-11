@@ -46,6 +46,10 @@ html, body { margin: 0; background: #fff; }
 [data-theme="dark"] input::placeholder { color: #6E6E6E; }
 [data-theme="dark"] .border-dashed { border-color: #3A3A3A !important; }
 
+/* Τα ονόματα στη λίστα πελατών: γκρι αντί για άσπρο, να μη φωνάζουν. */
+[data-theme="dark"] .client-name { color: #B4B4B4 !important; }
+[data-theme="dark"] .hover\:bg-neutral-50:hover { background-color: #161616 !important; }
+
 /* Τα κουμπιά με περίγραμμα χάνονταν στο σκούρο. Τους δίνουμε γκρι
    γέμισμα ώστε να διαβάζονται ως κουμπιά. */
 [data-theme="dark"] button.border.bg-white,
@@ -2668,6 +2672,9 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
   );
 }
 
+/* Κενή φόρμα νέου πελάτη. Ίδια πεδία με την εγγραφή στην εφαρμογή. */
+const NEW_CLIENT = { first_name: "", last_name: "", phone: "", email: "", pin: "", marketing: false };
+
 function People({ flash, onAuthFail }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
@@ -2684,6 +2691,11 @@ function People({ flash, onAuthFail }) {
   const [form, setForm] = useState({ first_name: "", last_name: "", phone: "", email: "" });
   const [saving, setSaving] = useState(false);
   const [exportingAll, setExportingAll] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newForm, setNewForm] = useState(NEW_CLIENT);
+  const [newErr, setNewErr] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState(null);
 
   const exportAll = async () => {
     setExportingAll(true);
@@ -2703,12 +2715,64 @@ function People({ flash, onAuthFail }) {
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
   const openClient = async (row) => {
+    setCreated(null);
     setSel(row); setHistory(null); setConfirmDelete(false);
     setPinOpen(false); setPinValue(""); setNewPin("");
     setEditOpen(false);
     const { data, error } = await rpc("admin_client_history", { p_client_id: row.id });
     if (error === "AUTH") { onAuthFail(); return; }
     setHistory(data || []);
+  };
+
+  const setNew = (patch) => { setNewForm((f) => ({ ...f, ...patch })); setNewErr(""); };
+
+  const openAdd = () => { setNewForm(NEW_CLIENT); setNewErr(""); setCreated(null); setAddOpen(true); };
+
+  /* Οι έλεγχοι γίνονται ξανά μέσα στη βάση (admin_create_client).
+     Εδώ είναι μόνο για να μη χρειάζεται ταξίδι για κάτι προφανές.
+     Κενός κωδικός = τυχαίος, τον επιστρέφει η βάση για να τον δώσεις. */
+  const createClient = async () => {
+    const fn = newForm.first_name.trim(), ln = newForm.last_name.trim();
+    const email = newForm.email.trim();
+    if (!fn) { setNewErr("Γράψε το όνομα"); return; }
+    if (!ln) { setNewErr("Γράψε το επώνυμο"); return; }
+    if (newForm.phone.length !== 10) { setNewErr("Το κινητό θέλει 10 ψηφία"); return; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setNewErr("Το email δεν φαίνεται σωστό"); return; }
+    if (newForm.marketing && !email) { setNewErr("Για ενημερώσεις χρειάζεται email"); return; }
+    if (newForm.pin && !/^\d{4}$/.test(newForm.pin)) { setNewErr("Ο κωδικός θέλει 4 ψηφία ή να μείνει κενός"); return; }
+
+    setCreating(true);
+    const { data, error } = await rpc("admin_create_client", {
+      p_first_name: fn,
+      p_last_name: ln,
+      p_phone: newForm.phone,
+      p_pin: newForm.pin || null,
+      p_email: email || null,
+      p_marketing: newForm.marketing,
+    });
+    setCreating(false);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data?.ok) { setNewErr(data?.error || "Δεν έγινε η εγγραφή"); return; }
+
+    const row = {
+      id: data.client_id,
+      name: data.name,
+      first_name: data.first_name,
+      last_name: data.last_name,
+      phone: data.phone,
+      email: data.email,
+      marketing: data.marketing,
+      has_card: false,
+      credits_total: null,
+      credits_used: 0,
+      credits_since: null,
+      total: 0, checkins: 0, cancels: 0, noshows: 0,
+    };
+    setCreated({ row, pin: data.pin });
+    setAddOpen(false);
+    setNewForm(NEW_CLIENT);
+    flash("Ο πελάτης γράφτηκε");
+    load();
   };
 
   // Παλιότερες εκδόσεις της admin_clients έδιναν μόνο ενωμένο όνομα — το κόβουμε στο πρώτο κενό.
@@ -2953,10 +3017,100 @@ function People({ flash, onAuthFail }) {
     <div className="px-5 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3 pt-6">
         <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">Πελάτες</h2>
-        <Button variant="outline" size="sm" disabled={exportingAll} onClick={exportAll}>
-          <IconDownload size={14} /><span className="ml-2">{exportingAll ? "Εξαγωγή…" : "PDF πακέτων όλων"}</span>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={openAdd} disabled={addOpen}>＋ Νέος πελάτης</Button>
+          <Button variant="outline" size="sm" disabled={exportingAll} onClick={exportAll}>
+            <IconDownload size={14} /><span className="ml-2">{exportingAll ? "Εξαγωγή…" : "PDF πακέτων όλων"}</span>
+          </Button>
+        </div>
       </div>
+
+      {addOpen && (
+        <div className="mt-5 border-2 border-black p-4">
+          <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+            Νέος πελάτης
+          </h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="f-display block text-[11px] font-bold uppercase tracking-wide text-neutral-500">Όνομα</span>
+              <input value={newForm.first_name} onChange={(e) => setNew({ first_name: e.target.value })}
+                className="f-text mt-1 h-12 w-full border-2 border-black px-3 text-[15px] outline-none" />
+            </label>
+            <label className="block">
+              <span className="f-display block text-[11px] font-bold uppercase tracking-wide text-neutral-500">Επώνυμο</span>
+              <input value={newForm.last_name} onChange={(e) => setNew({ last_name: e.target.value })}
+                className="f-text mt-1 h-12 w-full border-2 border-black px-3 text-[15px] outline-none" />
+            </label>
+            <label className="block">
+              <span className="f-display block text-[11px] font-bold uppercase tracking-wide text-neutral-500">Κινητό</span>
+              <input value={newForm.phone}
+                onChange={(e) => setNew({ phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
+                inputMode="numeric" placeholder="6900000000"
+                className="f-mono mt-1 h-12 w-full border-2 border-black px-3 text-[15px] outline-none" />
+            </label>
+            <label className="block">
+              <span className="f-display block text-[11px] font-bold uppercase tracking-wide text-neutral-500">Email</span>
+              <input value={newForm.email} onChange={(e) => setNew({ email: e.target.value })}
+                type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
+                placeholder="Προαιρετικό"
+                className="f-mono mt-1 h-12 w-full border-2 border-black px-3 text-[15px] outline-none" />
+            </label>
+            <label className="block">
+              <span className="f-display block text-[11px] font-bold uppercase tracking-wide text-neutral-500">Κωδικός (4 ψηφία)</span>
+              <input value={newForm.pin}
+                onChange={(e) => setNew({ pin: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+                inputMode="numeric" placeholder="Κενό = τυχαίος"
+                className="f-mono mt-1 h-12 w-full border-2 border-black px-3 text-[15px] tracking-[0.2em] outline-none" />
+            </label>
+          </div>
+
+          <button role="checkbox" aria-checked={newForm.marketing}
+            onClick={() => setNew({ marketing: !newForm.marketing })}
+            className="mt-3 flex w-full items-start gap-3 border border-black p-3 text-left">
+            <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center border border-black ${newForm.marketing ? "bg-black" : "bg-white"}`}>
+              {newForm.marketing && <span className="f-display text-[13px] font-bold leading-none text-white">✓</span>}
+            </span>
+            <span className="f-text text-[13px] leading-snug text-neutral-700">
+              Θέλει να λαμβάνει ενημερώσεις στο email για ομαδικά προγράμματα και προσφορές.
+            </span>
+          </button>
+
+          {newErr && <div className="f-text mt-3 text-[13px] text-red-700">{newErr}</div>}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={creating} onClick={createClient}>
+              {creating ? "Εγγραφή…" : "Εγγραφή πελάτη"}
+            </Button>
+            <Button variant="ghost" onClick={() => { setAddOpen(false); setNewErr(""); }}>Άκυρο</Button>
+          </div>
+          <p className="f-text mt-4 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+            Ο πελάτης μπαίνει στην εφαρμογή με το κινητό και τον κωδικό. Αν αφήσεις τον κωδικό κενό,
+            βγαίνει τυχαίος και σου τον δείχνει μόλις γίνει η εγγραφή. Τσέκαρε τις ενημερώσεις
+            μόνο αν ο πελάτης το ζήτησε ο ίδιος.
+          </p>
+        </div>
+      )}
+
+      {created && (
+        <div className="mt-5 border-2 border-black p-4">
+          <p className="f-text text-[14px] leading-relaxed">
+            Ο/Η <strong>{created.row.name}</strong> γράφτηκε. Στοιχεία σύνδεσης:
+          </p>
+          <div className="f-mono mt-3 text-[13px] text-neutral-500">Κινητό</div>
+          <div className="f-mono text-[18px] font-bold">{created.row.phone}</div>
+          <div className="f-mono mt-2 text-[13px] text-neutral-500">Κωδικός</div>
+          <div className="f-mono text-[34px] font-bold tracking-[0.3em]">{created.pin}</div>
+          <p className="f-text mt-3 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+            Δώσ' τα στον πελάτη τώρα — ο κωδικός δεν ξαναφαίνεται. Αν χαθεί, φτιάχνεις
+            καινούριο από την καρτέλα του.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button onClick={() => openClient(created.row)}>Άνοιγμα καρτέλας</Button>
+            <Button variant="outline" onClick={openAdd}>＋ Κι άλλος</Button>
+            <Button variant="ghost" onClick={() => setCreated(null)}>Έτοιμο</Button>
+          </div>
+        </div>
+      )}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Αναζήτηση με όνομα"
         className="f-text mt-4 h-12 w-full border-2 border-black px-4 text-[15px] outline-none" />
 
@@ -2972,7 +3126,7 @@ function People({ flash, onAuthFail }) {
             <button key={r.id} onClick={() => openClient(r)}
               className="flex w-full items-center justify-between gap-4 py-4 text-left hover:bg-neutral-50">
               <div className="min-w-0">
-                <div className="f-text truncate text-[15px]">{r.name}</div>
+                <div className="client-name f-text truncate text-[15px]">{r.name}</div>
                 <div className="f-mono text-[12px] text-neutral-500">{r.phone}</div>
                 {r.email && <div className="f-mono truncate text-[12px] text-neutral-400">{r.email}</div>}
               </div>

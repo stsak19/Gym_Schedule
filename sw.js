@@ -8,7 +8,7 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "app-v14";
+const VERSION = "app-v15";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
 
