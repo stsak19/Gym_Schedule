@@ -8,7 +8,7 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "app-v12";
+const VERSION = "app-v13";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
 
@@ -63,20 +63,41 @@ self.addEventListener("activate", (event) => {
 
 const isCdn = (url) => CDN_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith("." + h));
 
+/* Στη μνήμη μπαίνουν μόνο σωστές απαντήσεις. Παλιά γραφόταν και ένα
+   στιγμιαίο 404 ή 503, και έμενε στη θέση του σωστού αρχείου μέχρι την
+   επόμενη αλλαγή του VERSION. Τα «opaque» είναι οι βιβλιοθήκες από τα
+   CDN: ο browser δεν μας δείχνει τον κωδικό τους, αλλά είναι κανονικά. */
+const storable = (res) => !!res && (res.ok || res.type === "opaque");
+
 /* Πρώτα το δίκτυο, η μνήμη ως δίχτυ ασφαλείας. Για τη σελίδα, ώστε
    μια νέα έκδοση να φαίνεται αμέσως και να μη μένει κανείς
    κολλημένος σε παλιό κώδικα. */
+/* Το κλειδί της μνήμης είναι η σελίδα χωρίς τις παραμέτρους: αλλιώς
+   κάθε ?card=…, ?chat=1 και ?checkin=1 γραφόταν ως ξεχωριστή εγγραφή,
+   μαζί με το κλειδί της κάρτας. */
+const pageKey = (url) => url.origin + url.pathname;
+const isClientPage = (url) => /\/(index\.html)?$/.test(url.pathname);
+
 async function networkFirst(request) {
+  const url = new URL(request.url);
+  const key = pageKey(url);
   try {
     const fresh = await fetch(request);
-    const cache = await caches.open(SHELL);
-    cache.put(request, fresh.clone());
+    if (storable(fresh) && !fresh.redirected) {
+      const copy = fresh.clone();
+      caches.open(SHELL).then((c) => c.put(key, copy)).catch(() => { /* αγνόησε */ });
+    }
     return fresh;
   } catch (e) {
-    const hit = await caches.match(request);
+    const hit = await caches.match(key);
     if (hit) return hit;
-    const shell = await caches.match("./index.html");
-    if (shell) return shell;
+    /* Η εφεδρεία είναι η εφαρμογή πελατών μόνο όταν ζητήθηκε αυτή.
+       Η διαχείριση ή η σελίδα κριτικών δεν πρέπει ποτέ να ανοίγουν
+       ως εφαρμογή πελατών. */
+    if (isClientPage(url)) {
+      const shell = await caches.match("./index.html");
+      if (shell) return shell;
+    }
     throw e;
   }
 }
@@ -87,13 +108,18 @@ async function cacheFirst(request) {
   const hit = await caches.match(request);
   if (hit) {
     fetch(request)
-      .then((res) => caches.open(RUNTIME).then((c) => c.put(request, res)))
+      .then((res) => {
+        if (!storable(res)) return;
+        return caches.open(RUNTIME).then((c) => c.put(request, res));
+      })
       .catch(() => { /* αγνόησε */ });
     return hit;
   }
   const res = await fetch(request);
-  const cache = await caches.open(RUNTIME);
-  cache.put(request, res.clone());
+  if (storable(res)) {
+    const copy = res.clone();
+    caches.open(RUNTIME).then((c) => c.put(request, copy)).catch(() => { /* αγνόησε */ });
+  }
   return res;
 }
 
@@ -107,8 +133,13 @@ async function brandedManifest(request) {
   let res = null;
   try {
     res = await fetch(request);
-    const copy = res.clone();
-    caches.open(SHELL).then((c) => c.put(request, copy)).catch(() => { /* αγνόησε */ });
+    if (res.ok) {
+      const copy = res.clone();
+      caches.open(SHELL).then((c) => c.put(request, copy)).catch(() => { /* αγνόησε */ });
+    } else {
+      /* Χαλασμένη απάντηση: κάλλιο το τελευταίο καλό αντίγραφο. */
+      res = (await caches.match(request)) || res;
+    }
   } catch (e) {
     res = await caches.match(request);
   }
@@ -120,14 +151,22 @@ async function brandedManifest(request) {
        αφήνουμε κενό, για να πάρει ο browser το όνομα από τη σελίδα
        (τίτλος / apple-mobile-web-app-title) αντί για το εφεδρικό
        «Γυμναστήριο». */
+    /* Στο iPhone το κενό όνομα παραμένει, όπως πριν: εκεί το όνομα
+       έρχεται από το apple-mobile-web-app-title. Αλλού το manifest
+       χωρίς name/short_name δεν περνάει τον έλεγχο εγκατάστασης του
+       Chrome, οπότε μπαίνει το εφεδρικό. */
     const brand = await readStored(BRAND_URL);
+    const onIOS = /iPad|iPhone|iPod/.test((self.navigator && self.navigator.userAgent) || "");
     if (brand) {
       brandMemo = brand;
       m.name = brand;
       m.short_name = brand;
-    } else {
+    } else if (onIOS) {
       delete m.name;
       delete m.short_name;
+    } else {
+      m.name = m.name || BRAND_FALLBACK;
+      m.short_name = m.short_name || BRAND_FALLBACK;
     }
 
     /* Μόνο κανονική διεύθυνση. Λογότυπο σε data URL το κόβουν τα

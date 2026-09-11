@@ -95,7 +95,11 @@ html, body { margin: 0; background: #fff; }
 <body>
 <div id="root"><div style="font-family:system-ui,sans-serif;padding:24px;color:#666;font-size:14px;">Φόρτωση…</div></div>
 <script>
+  /* Μόνο για σφάλματα φόρτωσης (π.χ. δεν κατέβηκε το React ή η Babel
+     βρήκε λάθος). Μετά το πρώτο render δεν αγγίζει τη σελίδα: παλιά
+     οποιοδήποτε σφάλμα στη μέση της δουλειάς έσβηνε όλη τη διαχείριση. */
   window.addEventListener("error", function (e) {
+    if (window.__adminBooted) return;
     var el = document.getElementById("root");
     if (el) {
       el.innerHTML =
@@ -291,9 +295,39 @@ function signOut() {
   } catch (e) {}
 }
 
+/* Πολλές καρτέλες. Η Supabase δίνει καινούριο refresh token σε κάθε
+   ανανέωση και ακυρώνει το παλιό. Αν ο σταθμός εισόδου είναι σε μία
+   καρτέλα και η διαχείριση σε άλλη, η δεύτερη ανανέωνε με το token που
+   είχε ήδη «καεί» και πέταγε έξω και τις δύο. Τώρα κάθε καρτέλα
+   ακούει τις αλλαγές των άλλων, και πριν ζητήσει νέο token κοιτάει αν
+   κάποια άλλη το έχει φέρει ήδη. */
+function readStoredAdminSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { return null; }
+}
+
+window.addEventListener("storage", (e) => {
+  if (e.key !== SESSION_KEY) return;
+  try {
+    /* Κενό = βγήκε από άλλη καρτέλα. Η επόμενη κλήση θα γυρίσει AUTH
+       και θα δείξει τη σύνδεση και εδώ. */
+    session = e.newValue ? JSON.parse(e.newValue) : null;
+  } catch (err) { /* αγνόησε */ }
+});
+
 /* Μία ανανέωση τη φορά, κι ας τη ζητήσουν πέντε κλήσεις μαζί. */
 let refreshing = null;
 function refreshSession() {
+  const stored = readStoredAdminSession();
+  if (stored && stored.access_token && session && stored.access_token !== session.access_token) {
+    if (stored.expires_at && Date.now() < stored.expires_at) {
+      /* Άλλη καρτέλα έχει ήδη φρέσκο token — το παίρνουμε χωρίς κλήση. */
+      session = stored;
+      return Promise.resolve(true);
+    }
+    /* Έχει λήξει κι αυτό, αλλά το refresh token του είναι το τελευταίο
+       που έδωσε η Supabase. Ανανεώνουμε με εκείνο. */
+    if (stored.refresh_token) session = stored;
+  }
   if (!session || !session.refresh_token) return Promise.resolve(false);
   if (refreshing) return refreshing;
 
@@ -304,7 +338,16 @@ function refreshSession() {
         headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
         body: JSON.stringify({ refresh_token: session.refresh_token }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        /* Ίσως μας πρόλαβε άλλη καρτέλα όσο περιμέναμε. */
+        const latest = readStoredAdminSession();
+        if (latest && latest.access_token && session && latest.access_token !== session.access_token
+            && latest.expires_at && Date.now() < latest.expires_at) {
+          session = latest;
+          return true;
+        }
+        return false;
+      }
       const body = await res.json();
       if (!body.access_token) return false;
       saveSession(body);
@@ -4619,8 +4662,44 @@ async function loadBrand() {
   if (data && data.logo_url) setLogoUrl(data.logo_url);
 }
 
+/* Σφάλμα μέσα στα components: δείχνει μήνυμα με κουμπί ανανέωσης αντί
+   για λευκή σελίδα. Σφάλματα σε κουμπιά και χρονόμετρα δεν φτάνουν ως
+   εδώ — μένουν στην κονσόλα και η σελίδα συνεχίζει. */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { err: null };
+  }
+  static getDerivedStateFromError(err) {
+    return { err: err };
+  }
+  componentDidCatch(err, info) {
+    try { console.error(err, info); } catch (e) { /* αγνόησε */ }
+  }
+  render() {
+    if (this.state.err) {
+      return (
+        <div style={FONT} className="mx-auto flex min-h-full max-w-md flex-col items-center justify-center px-6 py-16 text-center">
+          <div className="f-display text-[26px] font-extrabold uppercase leading-tight tracking-tight">
+            Κάτι πήγε στραβά
+          </div>
+          <p className="mt-3 text-[14px] leading-relaxed text-neutral-500">
+            Ανανέωσε τη σελίδα. Η σύνδεσή σου μένει.
+          </p>
+          <p className="mt-2 break-words font-mono text-[12px] text-neutral-400">
+            {String((this.state.err && this.state.err.message) || this.state.err)}
+          </p>
+          <Button className="mt-6" onClick={() => window.location.reload()}>Ανανέωση</Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 loadBrand().then(() => {
-  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App /></ErrorBoundary>);
+  window.__adminBooted = true;
 });
 </script>
 </body>

@@ -188,6 +188,43 @@ let GYM_LOGO = "";
    το ίδιο επιβάλλει και η βάση μέσα στη send_chat. */
 let CHAT_ENABLED = true;
 const SESSION_KEY = "kinesis_session";
+
+/* «Να με θυμάσαι». Με τσεκαρισμένο, η σύνδεση μένει στο localStorage
+   και ο πελάτης μένει μέσα για πάντα. Χωρίς τσεκ, μπαίνει στο
+   sessionStorage, που σβήνει μόλις κλείσει η εφαρμογή ή η καρτέλα.
+   Στο sessionStorage δεν προλαβαίνουμε να σβήσουμε τη συνδρομή push
+   τη στιγμή που κλείνει η εφαρμογή — γι' αυτό αφήνουμε ένα σημάδι στο
+   localStorage, και στο επόμενο άνοιγμα, αν βρούμε σημάδι χωρίς
+   σύνδεση, καθαρίζουμε τότε. */
+const EPHEMERAL_KEY = "kinesis_session_ephemeral";
+
+function readStoredSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function storeSession(s, remember) {
+  try {
+    if (remember) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(EPHEMERAL_KEY);
+    } else {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.setItem(EPHEMERAL_KEY, "1");
+    }
+  } catch (e) { /* ignore */ }
+}
+function clearStoredSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+  try { localStorage.removeItem(EPHEMERAL_KEY); } catch (e) { /* ignore */ }
+}
+function ephemeralLeftover() {
+  try { return localStorage.getItem(EPHEMERAL_KEY) === "1"; } catch (e) { return false; }
+}
 const THEME_KEY = "kinesis_theme";
 
 /* Εμφάνιση: "auto" ακολουθεί τη ρύθμιση του κινητού. */
@@ -654,27 +691,40 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) setSession(JSON.parse(raw));
-    } catch (e) { /* ignore */ }
+    const stored = readStoredSession();
+    if (stored) {
+      setSession(stored);
+    } else if (ephemeralLeftover()) {
+      /* Η προηγούμενη σύνδεση ήταν χωρίς «Να με θυμάσαι» και έληξε με
+         το κλείσιμο της εφαρμογής. Δεν πρόλαβε κανείς να πατήσει
+         «Έξοδος», οπότε καθαρίζουμε τώρα ό,τι θα καθάριζε εκείνη. */
+      unsubscribePush();
+      writeKnown([]); ALERTED.clear(); resetAlerted(); writeHidden([]);
+      try { localStorage.removeItem(PUSH_ASKED_KEY); } catch (e) { /* ignore */ }
+      clearStoredSession();
+    }
     setReady(true);
   }, []);
 
   /* Οι θυμημένες κρατήσεις ανήκουν σε έναν λογαριασμό. Σε αλλαγή
      λογαριασμού καθαρίζουν, αλλιώς ο επόμενος πελάτης θα έβλεπε
      ακυρώσεις που δεν είναι δικές του. */
-  const login = (s, justSignedUp) => {
+  const login = (s, justSignedUp, remember = true) => {
     writeKnown([]); ALERTED.clear(); resetAlerted();
     setJustSignedUp(!!justSignedUp);
     setSession(s);
-    try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) { /* ignore */ }
+    storeSession(s, remember);
   };
+  /* Έξοδος: σβήνει και τη συνδρομή push της συσκευής. Αλλιώς το κινητό
+     συνέχιζε να παίρνει υπενθυμίσεις και μηνύματα του πελάτη που βγήκε.
+     Ξαναρωτάμε για ειδοποιήσεις όποιον μπει μετά. */
   const logout = () => {
+    unsubscribePush();
     writeKnown([]); ALERTED.clear(); resetAlerted();
+    try { localStorage.removeItem(PUSH_ASKED_KEY); } catch (e) { /* ignore */ }
     setJustSignedUp(false);
     setSession(null);
-    try { localStorage.removeItem(SESSION_KEY); } catch (e) { /* ignore */ }
+    clearStoredSession();
   };
 
   /* Ο λογαριασμός δεν υπάρχει πια στη βάση — τον έσβησε η διαχείριση.
@@ -683,10 +733,8 @@ function App() {
   const accountGone = useCallback((reason) => {
     unsubscribePush();
     writeKnown([]); ALERTED.clear(); resetAlerted(); writeHidden([]);
-    try {
-      localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem(PUSH_ASKED_KEY);
-    } catch (e) { /* ignore */ }
+    clearStoredSession();
+    try { localStorage.removeItem(PUSH_ASKED_KEY); } catch (e) { /* ignore */ }
     setJustSignedUp(false);
     setSession(null);
     /* Αν προλάβει να απαντήσει ο έλεγχος στο παρασκήνιο αφού έσβησε
@@ -958,6 +1006,7 @@ function SignIn({ onLogin, flash }) {
   const [email, setEmail] = useState("");
   const [marketing, setMarketing] = useState(false);
   const [pin, setPin] = useState("");
+  const [remember, setRemember] = useState(true);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
@@ -978,7 +1027,7 @@ function SignIn({ onLogin, flash }) {
     const { data, error } = await sb.rpc("sign_in_client", { p_phone: cleanPhone, p_pin: pin });
     setBusy(false);
     if (error || !data?.ok) { setErr(data?.error || "Κάτι πήγε στραβά, δοκίμασε ξανά"); return; }
-    onLogin({ clientId: data.client_id, firstName: data.first_name, lastName: data.last_name });
+    onLogin({ clientId: data.client_id, firstName: data.first_name, lastName: data.last_name }, false, remember);
   };
 
   const createClient = async () => {
@@ -1036,6 +1085,20 @@ function SignIn({ onLogin, flash }) {
                 inputMode="numeric" placeholder="Κωδικός (4 ψηφία)" type="password"
                 className="f-mono h-12 w-full border border-black px-4 text-[15px] tracking-[0.3em] outline-none" />
             </div>
+
+            <button role="checkbox" aria-checked={remember} onClick={() => setRemember(!remember)}
+              className="mt-3 flex w-full items-center gap-3 py-1 text-left">
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center border border-black ${remember ? "bg-black" : "bg-white"}`}>
+                {remember && <span className="f-display text-[13px] font-bold leading-none text-white">✓</span>}
+              </span>
+              <span className="f-text text-[14px] text-neutral-700">Να με θυμάσαι σε αυτή τη συσκευή</span>
+            </button>
+            {!remember && (
+              <div className="f-text mt-1 pl-8 text-[12px] leading-snug text-neutral-500">
+                Θα βγεις μόλις κλείσεις την εφαρμογή.
+              </div>
+            )}
+
             <Button className="mt-3 w-full" disabled={busy} onClick={signInClient}>{busy ? "Σύνδεση…" : "Σύνδεση"}</Button>
             {err && <div className="f-text mt-2 text-[13px] text-neutral-500">{err}</div>}
 
@@ -1819,6 +1882,12 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
       if (params.get("checkin") === "1" || params.get("card")) setTab("checkin");
       /* Πάτημα σε ειδοποίηση νέου μηνύματος, με την εφαρμογή κλειστή. */
       else if (params.get("chat") === "1" && CHAT_ENABLED) setTab("chat");
+      /* Διαβάστηκαν — φεύγουν από τη διεύθυνση. Αλλιώς κάθε ανανέωση
+         ξαναγύριζε στο check-in και το κλειδί της κάρτας έμενε στο
+         ιστορικό του browser. */
+      if (params.has("checkin") || params.has("card") || params.has("chat")) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+      }
     } catch (e) { /* ignore */ }
   }, []);
 
@@ -1889,14 +1958,14 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   useEffect(() => { refresh(); }, [refresh, tab]);
 
   useEffect(() => {
-    const id = setInterval(refresh, 30000);
+    /* Μόνο με την οθόνη ορατή. Το focus δεν το ακούμε: έρχεται μαζί με
+       το visibilitychange και διπλασίαζε τις κλήσεις. */
+    const id = setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 30000);
     const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", refresh);
     return () => {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", refresh);
     };
   }, [refresh]);
 
@@ -2427,15 +2496,19 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
           {(slots || []).map((s) => {
             const full = s.taken >= s.capacity;
             const isBusy = busySlot === s.slot_time;
+            /* Κράτηση με check-in δεν ακυρώνεται πια (το απορρίπτει και η
+               cancel_booking), οπότε δεν δείχνουμε κουμπί ακύρωσης. */
+            const myB = mine[s.slot_time];
+            const attended = !!myB && myB.status === "checked_in";
             return (
               <div key={s.slot_time} className="px-5 py-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <FlipNum value={s.slot_time} className="f-mono block text-[28px] leading-none tracking-tight" />
                     <div className="mt-2">
-                      {mine[s.slot_time] ? (
+                      {myB ? (
                         <span className="f-display border border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
-                          Έχεις κράτηση
+                          {attended ? "Έκανες check-in" : "Έχεις κράτηση"}
                         </span>
                       ) : (
                         <StatRow items={[
@@ -2446,9 +2519,9 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
                     </div>
                   </div>
                   <div className="shrink-0">
-                    {mine[s.slot_time] ? (
+                    {attended ? null : myB ? (
                       <Button variant="outline" size="sm" disabled={isBusy}
-                        onClick={() => cancel(mine[s.slot_time].id, s.slot_time)}>
+                        onClick={() => cancel(myB.id, s.slot_time)}>
                         Ακύρωση
                       </Button>
                     ) : full ? (
@@ -2867,29 +2940,40 @@ if ("serviceWorker" in navigator) {
    το περιμένουμε. Αν ο διακομιστής αργήσει πάνω από 3 δευτερόλεπτα,
    ξεκινάμε με τις εφεδρικές τιμές αντί να μείνει η σελίδα κολλημένη
    στο «Φόρτωση…». */
+/* Μία υλοποίηση για τους δύο δρόμους (έγκαιρη και καθυστερημένη
+   απάντηση). Οι αριθμοί ελέγχονται ως αριθμοί: το 0 είναι έγκυρη τιμή
+   (π.χ. check-in που ανοίγει ακριβώς στην ώρα) και δεν πρέπει να
+   πέφτει στην εφεδρική. */
+function applySettings(data) {
+  if (!data) return;
+  const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  if (data.gym_name) GYM_NAME = data.gym_name;
+  if (data.logo_url) GYM_LOGO = data.logo_url;
+  if (typeof data.chat_enabled === "boolean") CHAT_ENABLED = data.chat_enabled;
+  const days = num(data.max_days_ahead);
+  if (Number.isFinite(days) && days > 0) MAX_DAYS_AHEAD = days;
+  const before = num(data.checkin_before_min);
+  if (Number.isFinite(before) && before >= 0) CHECKIN_BEFORE_MIN = before;
+  const after = num(data.checkin_after_min);
+  if (Number.isFinite(after) && after >= 0) CHECKIN_AFTER_MIN = after;
+}
+
 async function loadAppSettings() {
   const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
   const call = sb.rpc("app_settings", {}).then((r) => (r.error ? null : r.data)).catch(() => null);
   const data = await Promise.race([call, timeout]);
   if (!data) {
     /* Άργησε ο διακομιστής και ξεκινήσαμε χωρίς αυτόν. Όταν απαντήσει,
-       διορθώνουμε τουλάχιστον το όνομα, ώστε το «Προσθήκη στην οθόνη
-       Αφετηρίας» να προτείνει το σωστό. */
+       περνάμε όλες τις ρυθμίσεις — όχι μόνο το όνομα — ώστε μηνύματα,
+       πρόγραμμα και check-in να μη μείνουν στις εφεδρικές τιμές. */
     call.then((late) => {
-      if (late && late.gym_name) {
-        GYM_NAME = late.gym_name;
-        if (late.logo_url) GYM_LOGO = late.logo_url;
-        applyBrandToPage();
-      }
+      if (!late) return;
+      applySettings(late);
+      applyBrandToPage();
     });
     return;
   }
-  if (data.gym_name) GYM_NAME = data.gym_name;
-  if (data.logo_url) GYM_LOGO = data.logo_url;
-  if (data.chat_enabled === false) CHAT_ENABLED = false;
-  if (data.max_days_ahead) MAX_DAYS_AHEAD = data.max_days_ahead;
-  if (data.checkin_before_min) CHECKIN_BEFORE_MIN = data.checkin_before_min;
-  if (data.checkin_after_min) CHECKIN_AFTER_MIN = data.checkin_after_min;
+  applySettings(data);
 }
 
 /* Το όνομα μπαίνει και στην καρτέλα του browser και στην ετικέτα που
