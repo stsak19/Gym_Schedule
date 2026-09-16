@@ -995,9 +995,59 @@ body.mode-workout {
 .volume-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-end;
+  gap: 12px;
   font-size: 14px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+}
+
+.volume-group { font-size: 15px; padding-bottom: 2px; }
+
+.volume-stats {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+}
+
+.volume-stats .vs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-left: 14px;
+}
+
+.volume-stats .vs-done {
+  padding-right: 14px;
+  min-width: 52px;
+  border-right: 1px solid var(--rule);
+}
+
+.volume-stats .vs-target { min-width: 78px; }
+
+.volume-stats .vs-label {
+  font-size: 9.5px;
+  letter-spacing: .14em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.volume-stats .vs-value {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-stats .vs-done .vs-value { color: var(--accent); }
+.volume-stats .vs-target .vs-value { color: var(--ink); }
+
+.volume-stats .vs-value small {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .volume-head .count {
@@ -1055,6 +1105,20 @@ body.mode-workout {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+
+.swap .swap-hint { margin: 0 0 12px; }
+
+.swap label.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 12px;
+  line-height: 1.35;
+}
+
+.swap label.check input { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+
+.field select:disabled { opacity: .5; }
 
 .macro-grid {
   display: grid;
@@ -1427,27 +1491,6 @@ button.history-item:active { background: var(--accent-soft); }
 }
 
 .mix-group:first-child { margin-top: 4px; }
-
-.level-pick { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-
-.level-opt {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 10px 12px;
-  font-family: inherit;
-  border: 1px solid var(--rule);
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.level-opt strong { display: block; font-size: 14px; margin-bottom: 2px; }
-.level-opt span { display: block; font-size: 12px; line-height: 1.4; color: var(--muted); }
-.level-opt em { display: block; font-style: normal; font-size: 12px; line-height: 1.45; margin-top: 6px; color: var(--ink); }
-
-.level-opt[data-on="true"] { border-color: var(--accent-line); background: var(--accent-soft); }
-.level-opt[data-on="true"] strong { color: var(--accent); }
 
 .mix-row {
   display: flex;
@@ -4962,12 +5005,6 @@ loadAppSettings().then(() => {
     <div class="panel" id="goal-panel" hidden></div>
 
     <div class="panel">
-      <h3>Επίπεδο</h3>
-      <p class="hint">Πόση εμπειρία έχεις με τα βάρη; Από αυτό αλλάζουν τα σετ, οι επαναλήψεις και η ένταση.</p>
-      <div class="level-pick" id="cfg-level"></div>
-    </div>
-
-    <div class="panel">
       <h3>Μέρες την εβδομάδα</h3>
       <p class="hint">Πόσες μέρες θέλεις να γυμνάζεσαι μέσα στην εβδομάδα;</p>
       <div class="day-pick" id="cfg-days"></div>
@@ -5714,76 +5751,6 @@ function __bootWorkout() {
       }
     };
 
-    /* ---------- Επίπεδο προπονούμενου ----------
-       Το πρότυπο του στόχου είναι γραμμένο για «μέσο» επίπεδο. Ο αρχάριος
-       κάνει λιγότερα σετ και μένει πιο μακριά από την αποτυχία. Ο
-       προχωρημένος κάνει περισσότερα σετ, πάει πιο κοντά στην αποτυχία
-       και κάθε μέρα με βάρη έχει δικό της χαρακτήρα: βαριά, μέτρια,
-       ελαφριά. Στην επιστροφή από τραυματισμό το επίπεδο δεν αλλάζει
-       τίποτα — εκεί αποφασίζει ο θεραπευτής. */
-
-    const LEVELS = {
-      beginner: {
-        label: 'Αρχάριος',
-        hint: 'Κάτω από 6 μήνες σταθερής προπόνησης με βάρη.',
-        detail: 'Λιγότερα σετ και 1 επανάληψη παραπάνω στο ρεζερβουάρ. Μαθαίνεις την κίνηση και ανεβάζεις κιλά σχεδόν κάθε εβδομάδα.',
-        sets: -1, rir: 1
-      },
-      intermediate: {
-        label: 'Μέσος',
-        hint: '6 μήνες έως 2 χρόνια σταθερής προπόνησης.',
-        detail: 'Το πρόγραμμα του στόχου σου όπως είναι.',
-        sets: 0, rir: 0
-      },
-      advanced: {
-        label: 'Προχωρημένος',
-        hint: 'Πάνω από 2 χρόνια και η πρόοδος έχει αρχίσει να αργεί.',
-        detail: 'Ένα σετ παραπάνω, πιο κοντά στην αποτυχία και εναλλαγή βαριάς, μέτριας και ελαφριάς μέρας. Κάθε 4–6 εβδομάδες μία ελαφριά εβδομάδα με τα μισά σετ.',
-        sets: 1, rir: -1, undulate: true
-      }
-    };
-    const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'];
-    const DEFAULT_LEVEL = 'intermediate';
-
-    const shiftRir = (txt, d) => {
-      if (!d || typeof txt !== 'string') return txt;
-      const n = txt.split('–').map((x) => Math.max(0, Number(x) + d));
-      if (n.some((x) => Number.isNaN(x))) return txt;
-      return n[0] === n[n.length - 1] ? String(n[0]) : n.join('–');
-    };
-
-    /* Οι αριθμοί του προτύπου για το επίπεδο και, στον προχωρημένο, για
-       τον χαρακτήρα της μέρας (0 βαριά, 1 μέτρια, 2 ελαφριά). */
-    function levelPreset(preset, levelId, wave) {
-      const lv = LEVELS[levelId] || LEVELS[DEFAULT_LEVEL];
-      if (!preset || preset === PRESETS.rehab) return preset;
-      const out = {
-        ...preset,
-        sets: { ...preset.sets },
-        reps: { main: [...preset.reps.main], aux: [...preset.reps.aux], iso: [...preset.reps.iso] },
-        rest: { ...preset.rest },
-        rir: { ...preset.rir }
-      };
-      ['main', 'aux', 'iso'].forEach((r) => {
-        const cap = r === 'iso' ? 4 : 5;
-        out.sets[r] = Math.min(cap, Math.max(2, preset.sets[r] + lv.sets));
-        out.rir[r] = shiftRir(preset.rir[r], lv.rir);
-      });
-      if (lv.undulate && wave === 0) {
-        /* Βαριά: οι σύνθετες πέφτουν στις χαμηλές επαναλήψεις του εύρους. */
-        const [a, b] = out.reps.main;
-        out.reps.main = [Math.max(3, a - 2), Math.max(Math.max(3, a - 2) + 2, a)];
-        out.rest.main = Math.max(out.rest.main, 180);
-      } else if (lv.undulate && wave === 2) {
-        /* Ελαφριά: περισσότερες επαναλήψεις, λίγο μικρότερα διαλείμματα. */
-        ['main', 'aux', 'iso'].forEach((r) => {
-          out.reps[r] = [out.reps[r][0] + 3, out.reps[r][1] + 5];
-          out.rest[r] = Math.max(45, out.rest[r] - 30);
-        });
-      }
-      return out;
-    }
-
     /* ---------- Έμφαση ----------
        Μικρές προσθήκες πάνω στο πρότυπο, από τους δευτερεύοντες στόχους. */
 
@@ -5942,7 +5909,7 @@ function __bootWorkout() {
     }
 
     function defaultConfig() {
-      return { preset: 'recomp', level: DEFAULT_LEVEL, days: 3, equipment: 'gym', emphasis: [], source: 'default' };
+      return { preset: 'recomp', days: 3, equipment: 'gym', emphasis: [], source: 'default' };
     }
 
     /* ---------- Περπάτημα και καρντιό ----------
@@ -5989,9 +5956,7 @@ function __bootWorkout() {
 
     function buildProgram(raw) {
       const cfg = { ...defaultConfig(), ...(raw || {}) };
-      const basePreset = PRESETS[cfg.preset] || PRESETS.recomp;
-      const level = LEVELS[cfg.level] ? cfg.level : DEFAULT_LEVEL;
-      const preset = levelPreset(basePreset, level, 1);
+      const preset = PRESETS[cfg.preset] || PRESETS.recomp;
       const mix = normalizeMix({ ...(raw || {}), days: cfg.days });
       let week = weekPlan(mix);
 
@@ -6051,7 +6016,6 @@ function __bootWorkout() {
 
       const program = {};
       const order = [];
-      let liftIndex = 0;
 
       plan.forEach((d, i) => {
         const key = DAY_KEYS[i];
@@ -6072,14 +6036,12 @@ function __bootWorkout() {
 
         const seen = new Set();
         const exercises = [];
-        const dayPreset = levelPreset(basePreset, level, liftIndex % 3);
-        liftIndex += 1;
 
         d.slots.forEach((slot) => {
           const id = pickAvailable(slot, cfg.equipment, seen);
           if (!id) return;
           seen.add(id);
-          exercises.push(shape(id, dayPreset));
+          exercises.push(shape(id, preset));
         });
 
         /* Καμία μέρα δεν φεύγει με λιγότερες από τέσσερις ασκήσεις. */
@@ -6093,7 +6055,7 @@ function __bootWorkout() {
             .forEach((id) => {
               seen.add(id);
               covered.add(CATALOG[id].group);
-              exercises.push(shape(id, dayPreset));
+              exercises.push(shape(id, preset));
             });
         }
 
@@ -6118,14 +6080,13 @@ function __bootWorkout() {
         days: order.length,
         liftDays,
         preset: cfg.preset,
-        level,
-        label: `${preset.label} · ${LEVELS[level].label} · ${mixSummary(mix)}`,
+        label: `${preset.label} · ${mixSummary(mix)}`,
         note: preset.note || (SESSION_TYPES[mainLift] || {}).note || '',
         nutritionGoal: preset.nutrition
       };
     }
 
-    return { CATALOG, ALIASES, SESSION_TYPES, LIFT_ORDER, MOVE_ORDER, MIX_ORDER, MAX_LIFT_DAYS, normalizeMix, mixTotal, liftTotal, mixSummary, DAY_KEYS, WEEKLY_VOLUME, GROUPS, ALTERNATIVES, NUTRITION, GUIDE, PRESETS, LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, levelPreset, EMPHASIS_LIST, GOAL_LABELS, GOAL_MAP, PRIMARY_PRESET, configFromGoals, autoMix, defaultConfig, buildProgram };
+    return { CATALOG, ALIASES, SESSION_TYPES, LIFT_ORDER, MOVE_ORDER, MIX_ORDER, MAX_LIFT_DAYS, normalizeMix, mixTotal, liftTotal, mixSummary, DAY_KEYS, WEEKLY_VOLUME, GROUPS, ALTERNATIVES, NUTRITION, GUIDE, PRESETS, EMPHASIS_LIST, GOAL_LABELS, GOAL_MAP, PRIMARY_PRESET, configFromGoals, autoMix, defaultConfig, buildProgram };
   })();
 
 
@@ -6868,7 +6829,7 @@ function __bootWorkout() {
 
     const {
       buildProgram, defaultConfig,
-      PRESETS, LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, levelPreset, EMPHASIS_LIST, ALIASES,
+      PRESETS, EMPHASIS_LIST, ALIASES,
       WEEKLY_VOLUME, NUTRITION, ALTERNATIVES, GROUPS,
       SESSION_TYPES, LIFT_ORDER, MOVE_ORDER, MIX_ORDER, MAX_LIFT_DAYS,
       normalizeMix, mixTotal, liftTotal, mixSummary,
@@ -7273,7 +7234,8 @@ function __bootWorkout() {
           `<div><h3 class="ex-name">${esc(ex.name)}</h3>` +
           `<div class="ex-prescription">${ex.sets} × ${ex.repMin}–${ex.repMax}` +
           (ex.rir && ex.rir !== '—' ? ` · RIR ${esc(ex.rir)}` : '') + `</div></div>` +
-          `<div class="ex-tools"><span class="ex-group">${esc(ex.group)}</span>` +
+          `<div class="ex-tools">` +
+          (ex.custom && ex.name === 'Νέα άσκηση' ? '' : `<span class="ex-group">${esc(ex.group)}</span>`) +
           `<button type="button" class="ex-swap" aria-expanded="${state.swapping === ex.id}"` +
           ` aria-label="Άλλαξε την άσκηση ${esc(ex.name)}">` +
           `<span class="ico" aria-hidden="true">⇄</span>Αλλαγή</button></div>`;
@@ -7433,31 +7395,49 @@ function __bootWorkout() {
       const box = document.createElement('div');
       box.className = 'swap';
 
-      const alts = ALTERNATIVES[ex.group] || [];
-      const options = [...new Set([ex.name, ...alts])];
+      /* Καινούρια άσκηση: ξεκινάς από τη μυϊκή ομάδα, μετά η άσκηση. */
+      const isNew = !!ex.custom && ex.name === 'Νέα άσκηση';
+      const startGroup = isNew ? '' : ex.group;
+      const startName = isNew ? '' : ex.name;
+      const ALL_ALTS = Object.values(ALTERNATIVES).flat();
+
+      /* Οι έτοιμες επιλογές μιας ομάδας. Το τρέχον όνομα μπαίνει μόνο
+         αν ανήκει σε αυτή την ομάδα, για να μη μπλέκονται ομάδες. */
+      function pickOptions(g, current) {
+        if (!g) return '<option value="">Πρώτα διάλεξε μυϊκή ομάδα</option>';
+        const list = ALTERNATIVES[g] || [];
+        const own = current && g === ex.group && current === ex.name && !isNew && !list.includes(current)
+          ? [current] : [];
+        const names = [...own, ...list];
+        const has = names.includes(current);
+        return `<option value=""${has ? '' : ' selected'}>— Διάλεξε άσκηση —</option>` +
+          names.map((n) => `<option${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      }
 
       box.innerHTML = `
-        <p class="swap-hint">Διάλεξε κάτι από τη λίστα ή γράψε ό,τι έχει το γυμναστήριό σου. Το ιστορικό της θέσης μένει, εκτός αν ζητήσεις καθαρό ξεκίνημα.</p>
+        <p class="swap-hint">Διάλεξε πρώτα μυϊκή ομάδα και μετά άσκηση από τη λίστα, ή γράψε ό,τι έχει το γυμναστήριό σου. Το ιστορικό της θέσης μένει, εκτός αν ζητήσεις καθαρό ξεκίνημα.</p>
         <div class="field">
-          <label for="sw-pick">Έτοιμες επιλογές — ${esc(ex.group)}</label>
-          <select id="sw-pick">${options
-            .map((n) => `<option${n === ex.name ? ' selected' : ''}>${esc(n)}</option>`)
-            .join('')}</select>
+          <label for="sw-group">1. Μυϊκή ομάδα</label>
+          <select id="sw-group">${startGroup ? '' : '<option value="" selected disabled>— Διάλεξε μυϊκή ομάδα —</option>'}${GROUPS.map(
+            (g) => `<option${g === startGroup ? ' selected' : ''}>${esc(g)}</option>`
+          ).join('')}</select>
+        </div>
+        <div class="field">
+          <label for="sw-pick">2. Άσκηση${startGroup ? ' — ' + esc(startGroup) : ''}</label>
+          <select id="sw-pick"${startGroup ? '' : ' disabled'}>${pickOptions(startGroup, startName)}</select>
         </div>
         <div class="field">
           <label for="sw-name">Όνομα άσκησης</label>
-          <input id="sw-name" type="text" maxlength="60" value="${esc(ex.name)}">
+          <input id="sw-name" type="text" maxlength="60" value="${esc(startName)}" placeholder="ή γράψε δικό σου όνομα">
         </div>
         <div class="field-pair">
           <div class="field">
-            <label for="sw-group">Μυϊκή ομάδα</label>
-            <select id="sw-group">${GROUPS.map(
-              (g) => `<option${g === ex.group ? ' selected' : ''}>${esc(g)}</option>`
-            ).join('')}</select>
-          </div>
-          <div class="field">
             <label for="sw-sets">Σετ</label>
             <input id="sw-sets" type="number" inputmode="numeric" min="1" max="8" step="1" value="${ex.sets}">
+          </div>
+          <div class="field">
+            <label for="sw-rest">Ξεκούραση (δευτ.)</label>
+            <input id="sw-rest" type="number" inputmode="numeric" min="15" max="600" step="15" value="${ex.rest}">
           </div>
         </div>
         <div class="field-pair">
@@ -7470,15 +7450,9 @@ function __bootWorkout() {
             <input id="sw-max" type="number" inputmode="numeric" min="1" max="60" step="1" value="${ex.repMax}">
           </div>
         </div>
-        <div class="field-pair">
-          <div class="field">
-            <label for="sw-step">Βήμα βάρους (kg)</label>
-            <input id="sw-step" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" value="${ex.step}">
-          </div>
-          <div class="field">
-            <label for="sw-rest">Ξεκούραση (δευτ.)</label>
-            <input id="sw-rest" type="number" inputmode="numeric" min="15" max="600" step="15" value="${ex.rest}">
-          </div>
+        <div class="field">
+          <label for="sw-step">Βήμα βάρους (kg)</label>
+          <input id="sw-step" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" value="${ex.step}">
         </div>
         <label class="check"><input type="checkbox" id="sw-bw"${ex.bodyweight ? ' checked' : ''}>
           Με το βάρος του σώματος — τα κιλά μετράνε ως επιπλέον επιβάρυνση</label>
@@ -7497,15 +7471,16 @@ function __bootWorkout() {
       const name = $('#sw-name', box);
       const group = $('#sw-group', box);
 
-      pick.addEventListener('change', () => { name.value = pick.value; });
+      pick.addEventListener('change', () => { if (pick.value) name.value = pick.value; });
 
-      /* Αλλάζοντας ομάδα, αλλάζει και η λίστα με τις έτοιμες επιλογές. */
+      /* Αλλάζοντας ομάδα, αλλάζει η λίστα. Αν το όνομα ήταν έτοιμη επιλογή
+         άλλης ομάδας, καθαρίζει. Ό,τι έγραψες μόνος σου μένει. */
       group.addEventListener('change', () => {
         const list = ALTERNATIVES[group.value] || [];
-        pick.innerHTML = [...new Set([name.value, ...list])]
-          .map((n) => `<option${n === name.value ? ' selected' : ''}>${esc(n)}</option>`)
-          .join('');
-        $('label[for="sw-pick"]', box).textContent = 'Έτοιμες επιλογές — ' + group.value;
+        if (ALL_ALTS.includes(name.value) && !list.includes(name.value)) name.value = '';
+        pick.innerHTML = pickOptions(group.value, name.value);
+        pick.disabled = !group.value;
+        $('label[for="sw-pick"]', box).textContent = '2. Άσκηση — ' + group.value;
       });
 
       $('[data-cancel]', box).addEventListener('click', () => {
@@ -7514,8 +7489,9 @@ function __bootWorkout() {
       });
 
       $('[data-apply]', box).addEventListener('click', () => {
+        if (!group.value) { group.focus(); return; }
         const finalName = name.value.trim();
-        if (!finalName) { name.focus(); return; }
+        if (!finalName) { (pick.value ? name : pick).focus(); return; }
 
         let lo = clamp(Math.round(Number($('#sw-min', box).value) || ex.repMin), 1, 60);
         let hi = clamp(Math.round(Number($('#sw-max', box).value) || ex.repMax), 1, 60);
@@ -7555,7 +7531,7 @@ function __bootWorkout() {
         renderAll();
       });
 
-      setTimeout(() => name.focus({ preventScroll: true }), 30);
+      if (!isNew) setTimeout(() => name.focus({ preventScroll: true }), 30);
       return box;
     }
 
@@ -7987,8 +7963,11 @@ function __bootWorkout() {
         const item = document.createElement('div');
         item.className = 'volume-item';
         item.innerHTML =
-          `<div class="volume-head"><span>${v.group}</span>` +
-          `<span class="count">${done} <span style="color:var(--muted);font-weight:400">/ ${v.target} σετ</span></span></div>`;
+          `<div class="volume-head"><span class="volume-group">${v.group}</span>` +
+          `<div class="volume-stats">` +
+          `<div class="vs vs-done"><span class="vs-label">ΕΓΙΝΑΝ</span><span class="vs-value">${done}</span></div>` +
+          `<div class="vs vs-target"><span class="vs-label">ΣΤΟΧΟΣ</span><span class="vs-value">${v.target}<small> σετ</small></span></div>` +
+          `</div></div>`;
         item.appendChild(barRow(done, v.max));
         const note = document.createElement('div');
         note.className = 'volume-note';
@@ -7996,11 +7975,6 @@ function __bootWorkout() {
         item.appendChild(note);
         host.appendChild(item);
       });
-
-      const caption = document.createElement('p');
-      caption.className = 'hint';
-      caption.textContent = 'Σετ που καταγράφηκαν τις τελευταίες 7 ημέρες, σε σχέση με το εβδομαδιαίο εύρος που στηρίζει η έρευνα.';
-      host.appendChild(caption);
     }
 
     let historyAll = false;
@@ -8386,7 +8360,6 @@ function __bootWorkout() {
       const mix = normalizeMix(cfg);
       return JSON.stringify({
         preset: cfg.preset,
-        level: cfg.level || DEFAULT_LEVEL,
         target: Number(cfg.target) || 0,
         mix: MIX_ORDER.filter((t) => mix[t]).map((t) => [t, mix[t]]),
         emphasis: [...(cfg.emphasis || [])].sort()
@@ -8443,14 +8416,6 @@ function __bootWorkout() {
       return true;
     }
 
-    function chooseLevel(id) {
-      if (!LEVELS[id]) return;
-      const cur = LEVELS[state.plan.config.level] ? state.plan.config.level : DEFAULT_LEVEL;
-      if (id === cur) return;
-      applyPlanConfig({ ...state.plan.config, level: id },
-        `Έτοιμο. Σετ, επαναλήψεις και ένταση άλλαξαν για επίπεδο «${LEVELS[id].label}».`);
-    }
-
     function setDays(n) {
       applyPlanConfig(configFor(n), 'Έτοιμο. Το πρόγραμμά σου ξαναφτιάχτηκε.');
     }
@@ -8503,12 +8468,9 @@ function __bootWorkout() {
     function renderGoalPanel() {
       const host = $('#goal-panel');
       if (!host) return;
-      const base = PRESETS[state.plan.config.preset];
-      if (!base) { host.hidden = true; return; }
-      const lvId = LEVELS[state.plan.config.level] ? state.plan.config.level : DEFAULT_LEVEL;
-      const lv = LEVELS[lvId];
-      const p = levelPreset(base, lvId, 1);
-      const b = base.brief || {};
+      const p = PRESETS[state.plan.config.preset];
+      if (!p) { host.hidden = true; return; }
+      const b = p.brief || {};
       const fmtRest = (s) => s >= 60
         ? (s % 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}′` : `${s / 60}′`)
         : `${s}″`;
@@ -8522,13 +8484,8 @@ function __bootWorkout() {
         `<div class="goal-body">` +
         `<p class="hint">${esc(p.tagline || '')}</p>` +
         (b.who ? `<p class="hint">${esc(b.who)}</p>` : '') +
-        `<p class="hint"><strong>Επίπεδο: ${esc(lv.label)}.</strong>${base === PRESETS.rehab ? ' Στην επιστροφή από τραυματισμό το πρόγραμμα μένει ίδιο σε κάθε επίπεδο.' : ''}</p>` +
         roles.map(([r, l]) => row(l,
           `${p.sets[r]} × ${p.reps[r][0]}–${p.reps[r][1]} · ${fmtRest(p.rest[r])} · RIR ${p.rir[r]}`)).join('') +
-        (lv.undulate && base !== PRESETS.rehab ? (() => {
-          const h = levelPreset(base, lvId, 0), l = levelPreset(base, lvId, 2);
-          return `<p class="hint" style="margin-top:8px">Οι αριθμοί είναι της μέτριας μέρας. Βαριά μέρα: βασικές ${h.reps.main[0]}–${h.reps.main[1]} επαναλήψεις. Ελαφριά μέρα: βασικές ${l.reps.main[0]}–${l.reps.main[1]}, μονωτικές ${l.reps.iso[0]}–${l.reps.iso[1]}.</p>`;
-        })() : '') +
         (b.train ? `<p class="hint" style="margin-top:12px"><strong>Προπόνηση.</strong> ${esc(b.train)}</p>` : '') +
         (b.cardio ? `<p class="hint"><strong>Κίνηση.</strong> ${esc(b.cardio)}</p>` : '') +
         (food.hint ? `<p class="hint"><strong>Διατροφή.</strong> ${esc(food.hint)} Πρωτεΐνη ${(food.range || [1.6, 2.2]).join('–')} g/kg.</p>` : '') +
@@ -8548,18 +8505,6 @@ function __bootWorkout() {
       const total = mixTotal(mix);
       const lifts = liftTotal(mix);
       const target = targetDays();
-
-      const lvPick = $('#cfg-level');
-      if (lvPick) {
-        const cur = LEVELS[state.plan.config.level] ? state.plan.config.level : DEFAULT_LEVEL;
-        lvPick.innerHTML = LEVEL_ORDER.map((id) => {
-          const lv = LEVELS[id];
-          const onLv = id === cur;
-          return `<button type="button" class="level-opt" data-level="${id}" data-on="${onLv}" aria-pressed="${onLv}">` +
-            `<strong>${esc(lv.label)}</strong><span>${esc(lv.hint)}</span>` +
-            (onLv ? `<em>${esc(lv.detail)}</em>` : '') + `</button>`;
-        }).join('');
-      }
 
       const pick = $('#cfg-days');
       if (pick) {
@@ -9404,11 +9349,6 @@ function __bootWorkout() {
       const el = $(sel);
       if (el) el.addEventListener(ev, fn);
     }
-
-    on('#cfg-level', 'click', (e) => {
-      const b = e.target.closest('button[data-level]');
-      if (b) chooseLevel(b.dataset.level);
-    });
 
     on('#cfg-days', 'click', (e) => {
       const b = e.target.closest('button[data-days]');
