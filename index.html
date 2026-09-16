@@ -1056,6 +1056,20 @@ body.mode-workout {
   gap: 10px;
 }
 
+.swap .swap-hint { margin: 0 0 12px; }
+
+.swap label.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 12px;
+  line-height: 1.35;
+}
+
+.swap label.check input { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+
+.field select:disabled { opacity: .5; }
+
 .macro-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -7170,7 +7184,8 @@ function __bootWorkout() {
           `<div><h3 class="ex-name">${esc(ex.name)}</h3>` +
           `<div class="ex-prescription">${ex.sets} × ${ex.repMin}–${ex.repMax}` +
           (ex.rir && ex.rir !== '—' ? ` · RIR ${esc(ex.rir)}` : '') + `</div></div>` +
-          `<div class="ex-tools"><span class="ex-group">${esc(ex.group)}</span>` +
+          `<div class="ex-tools">` +
+          (ex.custom && ex.name === 'Νέα άσκηση' ? '' : `<span class="ex-group">${esc(ex.group)}</span>`) +
           `<button type="button" class="ex-swap" aria-expanded="${state.swapping === ex.id}"` +
           ` aria-label="Άλλαξε την άσκηση ${esc(ex.name)}">` +
           `<span class="ico" aria-hidden="true">⇄</span>Αλλαγή</button></div>`;
@@ -7330,31 +7345,49 @@ function __bootWorkout() {
       const box = document.createElement('div');
       box.className = 'swap';
 
-      const alts = ALTERNATIVES[ex.group] || [];
-      const options = [...new Set([ex.name, ...alts])];
+      /* Καινούρια άσκηση: ξεκινάς από τη μυϊκή ομάδα, μετά η άσκηση. */
+      const isNew = !!ex.custom && ex.name === 'Νέα άσκηση';
+      const startGroup = isNew ? '' : ex.group;
+      const startName = isNew ? '' : ex.name;
+      const ALL_ALTS = Object.values(ALTERNATIVES).flat();
+
+      /* Οι έτοιμες επιλογές μιας ομάδας. Το τρέχον όνομα μπαίνει μόνο
+         αν ανήκει σε αυτή την ομάδα, για να μη μπλέκονται ομάδες. */
+      function pickOptions(g, current) {
+        if (!g) return '<option value="">Πρώτα διάλεξε μυϊκή ομάδα</option>';
+        const list = ALTERNATIVES[g] || [];
+        const own = current && g === ex.group && current === ex.name && !isNew && !list.includes(current)
+          ? [current] : [];
+        const names = [...own, ...list];
+        const has = names.includes(current);
+        return `<option value=""${has ? '' : ' selected'}>— Διάλεξε άσκηση —</option>` +
+          names.map((n) => `<option${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      }
 
       box.innerHTML = `
-        <p class="swap-hint">Διάλεξε κάτι από τη λίστα ή γράψε ό,τι έχει το γυμναστήριό σου. Το ιστορικό της θέσης μένει, εκτός αν ζητήσεις καθαρό ξεκίνημα.</p>
+        <p class="swap-hint">Διάλεξε πρώτα μυϊκή ομάδα και μετά άσκηση από τη λίστα, ή γράψε ό,τι έχει το γυμναστήριό σου. Το ιστορικό της θέσης μένει, εκτός αν ζητήσεις καθαρό ξεκίνημα.</p>
         <div class="field">
-          <label for="sw-pick">Έτοιμες επιλογές — ${esc(ex.group)}</label>
-          <select id="sw-pick">${options
-            .map((n) => `<option${n === ex.name ? ' selected' : ''}>${esc(n)}</option>`)
-            .join('')}</select>
+          <label for="sw-group">1. Μυϊκή ομάδα</label>
+          <select id="sw-group">${startGroup ? '' : '<option value="" selected disabled>— Διάλεξε μυϊκή ομάδα —</option>'}${GROUPS.map(
+            (g) => `<option${g === startGroup ? ' selected' : ''}>${esc(g)}</option>`
+          ).join('')}</select>
+        </div>
+        <div class="field">
+          <label for="sw-pick">2. Άσκηση${startGroup ? ' — ' + esc(startGroup) : ''}</label>
+          <select id="sw-pick"${startGroup ? '' : ' disabled'}>${pickOptions(startGroup, startName)}</select>
         </div>
         <div class="field">
           <label for="sw-name">Όνομα άσκησης</label>
-          <input id="sw-name" type="text" maxlength="60" value="${esc(ex.name)}">
+          <input id="sw-name" type="text" maxlength="60" value="${esc(startName)}" placeholder="ή γράψε δικό σου όνομα">
         </div>
         <div class="field-pair">
           <div class="field">
-            <label for="sw-group">Μυϊκή ομάδα</label>
-            <select id="sw-group">${GROUPS.map(
-              (g) => `<option${g === ex.group ? ' selected' : ''}>${esc(g)}</option>`
-            ).join('')}</select>
-          </div>
-          <div class="field">
             <label for="sw-sets">Σετ</label>
             <input id="sw-sets" type="number" inputmode="numeric" min="1" max="8" step="1" value="${ex.sets}">
+          </div>
+          <div class="field">
+            <label for="sw-rest">Ξεκούραση (δευτ.)</label>
+            <input id="sw-rest" type="number" inputmode="numeric" min="15" max="600" step="15" value="${ex.rest}">
           </div>
         </div>
         <div class="field-pair">
@@ -7367,15 +7400,9 @@ function __bootWorkout() {
             <input id="sw-max" type="number" inputmode="numeric" min="1" max="60" step="1" value="${ex.repMax}">
           </div>
         </div>
-        <div class="field-pair">
-          <div class="field">
-            <label for="sw-step">Βήμα βάρους (kg)</label>
-            <input id="sw-step" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" value="${ex.step}">
-          </div>
-          <div class="field">
-            <label for="sw-rest">Ξεκούραση (δευτ.)</label>
-            <input id="sw-rest" type="number" inputmode="numeric" min="15" max="600" step="15" value="${ex.rest}">
-          </div>
+        <div class="field">
+          <label for="sw-step">Βήμα βάρους (kg)</label>
+          <input id="sw-step" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" value="${ex.step}">
         </div>
         <label class="check"><input type="checkbox" id="sw-bw"${ex.bodyweight ? ' checked' : ''}>
           Με το βάρος του σώματος — τα κιλά μετράνε ως επιπλέον επιβάρυνση</label>
@@ -7394,15 +7421,16 @@ function __bootWorkout() {
       const name = $('#sw-name', box);
       const group = $('#sw-group', box);
 
-      pick.addEventListener('change', () => { name.value = pick.value; });
+      pick.addEventListener('change', () => { if (pick.value) name.value = pick.value; });
 
-      /* Αλλάζοντας ομάδα, αλλάζει και η λίστα με τις έτοιμες επιλογές. */
+      /* Αλλάζοντας ομάδα, αλλάζει η λίστα. Αν το όνομα ήταν έτοιμη επιλογή
+         άλλης ομάδας, καθαρίζει. Ό,τι έγραψες μόνος σου μένει. */
       group.addEventListener('change', () => {
         const list = ALTERNATIVES[group.value] || [];
-        pick.innerHTML = [...new Set([name.value, ...list])]
-          .map((n) => `<option${n === name.value ? ' selected' : ''}>${esc(n)}</option>`)
-          .join('');
-        $('label[for="sw-pick"]', box).textContent = 'Έτοιμες επιλογές — ' + group.value;
+        if (ALL_ALTS.includes(name.value) && !list.includes(name.value)) name.value = '';
+        pick.innerHTML = pickOptions(group.value, name.value);
+        pick.disabled = !group.value;
+        $('label[for="sw-pick"]', box).textContent = '2. Άσκηση — ' + group.value;
       });
 
       $('[data-cancel]', box).addEventListener('click', () => {
@@ -7411,8 +7439,9 @@ function __bootWorkout() {
       });
 
       $('[data-apply]', box).addEventListener('click', () => {
+        if (!group.value) { group.focus(); return; }
         const finalName = name.value.trim();
-        if (!finalName) { name.focus(); return; }
+        if (!finalName) { (pick.value ? name : pick).focus(); return; }
 
         let lo = clamp(Math.round(Number($('#sw-min', box).value) || ex.repMin), 1, 60);
         let hi = clamp(Math.round(Number($('#sw-max', box).value) || ex.repMax), 1, 60);
@@ -7452,7 +7481,7 @@ function __bootWorkout() {
         renderAll();
       });
 
-      setTimeout(() => name.focus({ preventScroll: true }), 30);
+      if (!isNew) setTimeout(() => name.focus({ preventScroll: true }), 30);
       return box;
     }
 
