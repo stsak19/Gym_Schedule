@@ -652,8 +652,8 @@ body.mode-workout {
 .sets {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 12px;
+  gap: 12px 7px;
+  margin-top: 14px;
 }
 
 .setchip {
@@ -669,6 +669,33 @@ body.mode-workout {
 }
 
 .setchip:hover { border-color: var(--muted); }
+
+.setchip { position: relative; }
+
+/* Ανάμνηση της πρότασης που δόθηκε για σήμερα: ↑ ανέβα, = μείνε, ↓ ρίξε. */
+.sug-badge {
+  position: absolute;
+  top: -8px;
+  right: -5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #141414;
+  border: 1px solid var(--muted);
+  color: var(--ink);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.sug-badge[data-act='up'] { border-color: var(--accent); color: var(--accent); }
+.sug-badge[data-act='stay'] { border-color: #8ab4ff; color: #8ab4ff; }
+.sug-badge[data-act='down'] { border-color: var(--red); color: var(--red); }
+
+.ex-sug { display: block; margin-top: 3px; font-weight: 600; }
+.ex-sug[data-act='up'] { color: var(--accent); }
+.ex-sug[data-act='stay'] { color: #8ab4ff; }
+.ex-sug[data-act='down'] { color: var(--red); }
 
 .setchip .val {
   display: block;
@@ -715,6 +742,16 @@ body.mode-workout {
   font-size: 14px;
   font-weight: 600;
   color: var(--on-accent);
+}
+.levelup-note[data-act='stay'] {
+  background: rgba(138, 180, 255, 0.14);
+  color: #b9d1ff;
+  border: 1px solid rgba(138, 180, 255, 0.45);
+}
+.levelup-note[data-act='down'] {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.45);
 }
 
 /* ---------- Επεξεργασία σετ ---------- */
@@ -7166,15 +7203,43 @@ function __bootWorkout() {
       return null;
     }
 
-    /* Διπλή προοδευτικότητα: αν όλα τα σετ έπιασαν το πάνω όριο, ανέβασε βάρος. */
+    /* Διπλή προοδευτικότητα, με τρεις δυνατές αποφάσεις:
+       ανέβα  — όλα τα σετ έγιναν και έπιασαν το πάνω όριο,
+       ρίξε   — στα μισά σετ ή περισσότερα οι επαναλήψεις έπεσαν κάτω από το κάτω όριο,
+       μείνε  — οτιδήποτε ενδιάμεσα: ίδια κιλά, κυνηγάς επαναλήψεις. */
+    function verdict(ex, sets) {
+      const list = (sets || []).filter((x) => x && x.w != null);
+      if (!list.length) return null;
+      const top = Math.max(...list.map((x) => Number(x.w) || 0));
+      const complete = list.length >= ex.sets;
+      if (complete && list.every((x) => x.r >= ex.repMax)) {
+        return { action: 'up', weight: +(top + ex.step).toFixed(2) };
+      }
+      const low = list.filter((x) => x.r < ex.repMin).length;
+      if (low >= Math.ceil(ex.sets / 2) && top > 0) {
+        return { action: 'down', weight: +Math.max(0, top - ex.step).toFixed(2) };
+      }
+      return { action: 'stay', weight: top };
+    }
+
+    const VERDICT_WORD = { up: 'ανέβα', stay: 'μείνε', down: 'ρίξε' };
+    const VERDICT_ICON = { up: '↑', stay: '=', down: '↓' };
+
+    function verdictText(ex, v) {
+      const kg = ex.bodyweight
+        ? (v.weight > 0 ? `${num(v.weight)} kg επιβάρυνση` : 'χωρίς επιβάρυνση')
+        : `${num(v.weight)} kg`;
+      return v.weight > 0 || !ex.bodyweight
+        ? `${VERDICT_WORD[v.action]} στα ${kg}`
+        : `${VERDICT_WORD[v.action]} ${kg}`;
+    }
+
+    /* Η πρόταση για σήμερα βγαίνει από την προηγούμενη φορά. */
     function suggestion(ex) {
       const last = lastPerformance(ex.id);
-      if (!last) return { weight: null, levelUp: false };
-      const complete = last.sets.length >= ex.sets;
-      const allTop = last.sets.every((s) => s.r >= ex.repMax);
-      const topWeight = Math.max(...last.sets.map((s) => s.w));
-      if (complete && allTop) return { weight: +(topWeight + ex.step).toFixed(2), levelUp: true };
-      return { weight: topWeight, levelUp: false };
+      const v = last ? verdict(ex, last.sets) : null;
+      if (!v) return { weight: null, levelUp: false, action: null };
+      return { weight: v.weight, levelUp: v.action === 'up', action: v.action };
     }
 
     /* Ποια ημέρα προτείνεται σήμερα: η επόμενη στη ρότα μετά την τελευταία ολοκληρωμένη. */
@@ -7374,10 +7439,15 @@ function __bootWorkout() {
           chip.className = 'setchip';
           chip.dataset.filled = String(!!entry);
           chip.dataset.top = String(!!entry && entry.r >= ex.repMax);
-          chip.setAttribute('aria-label', `Σετ ${i + 1}`);
-          chip.innerHTML = entry
+          chip.setAttribute('aria-label', `Σετ ${i + 1}` +
+            (sug.action ? ` · πρόταση: ${verdictText(ex, sug)}` : ''));
+          const badge = sug.action
+            ? `<span class="sug-badge" data-act="${sug.action}" title="Πρόταση: ${esc(verdictText(ex, sug))}">` +
+              `${VERDICT_ICON[sug.action]} ${num(sug.weight)}</span>`
+            : '';
+          chip.innerHTML = badge + (entry
             ? `<span class="val">${num(entry.w)}${ex.bodyweight ? '' : ' kg'}</span><span class="sub">${entry.r} επαν.</span>`
-            : `<span class="val">—</span><span class="sub">σετ ${i + 1}</span>`;
+            : `<span class="val">—</span><span class="sub">σετ ${i + 1}</span>`);
           chip.addEventListener('click', () => {
             state.editing =
               state.editing && state.editing.exId === ex.id && state.editing.index === i
@@ -7395,19 +7465,29 @@ function __bootWorkout() {
           meta.textContent =
             `Τελευταία (${shortDate(last.date)}): ` +
             last.sets.map((s) => `${num(s.w)}×${s.r}`).join('  ·  ');
+          if (sug.action) {
+            const why = document.createElement('span');
+            why.className = 'ex-sug';
+            why.dataset.act = sug.action;
+            why.textContent = `Πρόταση για σήμερα: ${VERDICT_ICON[sug.action]} ${verdictText(ex, sug)}`;
+            meta.appendChild(why);
+          }
           card.appendChild(meta);
         }
 
-        if (allTop) {
+        /* Τέλος άσκησης: τι κάνεις την επόμενη φορά. */
+        const nextV = allDone ? verdict(ex, filled) : null;
+        if (nextV) {
           const note = document.createElement('div');
           note.className = 'levelup-note';
-          const next = +(Math.max(...filled.map((s) => s.w)) + ex.step).toFixed(2);
-          note.textContent = `Κλείδωσες όλα τα σετ στο πάνω όριο. Την επόμενη φορά ανέβα στα ${num(next)} kg.`;
-          card.appendChild(note);
-        } else if (sug.levelUp) {
-          const note = document.createElement('div');
-          note.className = 'levelup-note';
-          note.textContent = `Σήμερα ανέβα στα ${num(sug.weight)} kg.`;
+          note.dataset.act = nextV.action;
+          const txt = verdictText(ex, nextV);
+          note.textContent =
+            nextV.action === 'up'
+              ? `Κλείδωσες όλα τα σετ στο πάνω όριο. Την επόμενη φορά ${VERDICT_ICON.up} ${txt}.`
+              : nextV.action === 'down'
+                ? `Οι επαναλήψεις έπεσαν κάτω από ${ex.repMin} στα περισσότερα σετ. Την επόμενη φορά ${VERDICT_ICON.down} ${txt}.`
+                : `Καλή δουλειά. Την επόμενη φορά ${VERDICT_ICON.stay} ${txt} και πάλεψε για ${ex.repMax} επαναλήψεις σε όλα τα σετ.`;
           card.appendChild(note);
         }
 
