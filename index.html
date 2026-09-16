@@ -1523,32 +1523,6 @@ button.history-item:active { background: var(--accent-soft); }
   text-align: center;
 }
 
-.log-date {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-}
-.log-date .chip { padding: 8px 12px; font-size: 14px; }
-.log-date input[type='date'] {
-  -webkit-appearance: none;
-  appearance: none;
-  font: inherit;
-  font-size: 14px;
-  color-scheme: dark;
-  padding: 6px 8px;
-  border: 1px solid var(--rule);
-  background: transparent;
-  color: var(--muted);
-}
-.log-date input[data-on="true"] { border-color: var(--accent-line); color: var(--accent); }
-.log-date-note {
-  flex-basis: 100%;
-  font-size: 13px;
-  color: var(--accent);
-}
-
 #cfg-preview {
   margin: 14px 0 12px;
   border: 1px solid var(--rule);
@@ -1588,7 +1562,46 @@ button.history-item:active { background: var(--accent-soft); }
 /* ---------- Ενσωμάτωση στη σελίδα των κρατήσεων ---------- */
 
 /* Η κεφαλίδα του καρνέ ξεκινάει κάτω από το notch. */
+.goal-details > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.goal-details > summary::-webkit-details-marker { display: none; }
+.goal-details > summary h3 { margin: 0; }
+.goal-chev {
+  font-size: 26px;
+  line-height: 1;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+}
+.goal-details[open] .goal-chev { transform: rotate(90deg); }
+.goal-body { margin-top: 12px; }
+
 #workout-app .masthead { padding-top: calc(env(safe-area-inset-top) + 18px); }
+
+/* Η κεφαλίδα μένει κολλημένη πάνω όσο κυλάς. Το φόντο απλώνεται και
+   στα περιθώρια της σελίδας, ώστε να μη φαίνεται περιεχόμενο από κάτω. */
+@media (max-width: 899px) {
+  #workout-app .masthead {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: var(--paper);
+  }
+  #workout-app .masthead::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: -16px; right: -16px;
+    background: var(--paper);
+    z-index: -1;
+  }
+}
 
 /* Η αναφορά PDF — φύλλο πάνω από την εφαρμογή. */
 #report-sheet {
@@ -4813,7 +4826,6 @@ loadAppSettings().then(() => {
     <div class="section-head">
       <h2 id="day-title">—</h2>
       <p id="day-focus"></p>
-      <div class="log-date" id="log-date" role="group" aria-label="Για ποια μέρα καταγράφεις"></div>
     </div>
     <div id="exercise-list"></div>
     <div class="btn-row">
@@ -6801,15 +6813,10 @@ function __bootWorkout() {
     const isoLocal = (d) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const today = () => isoLocal(new Date());
-    const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return isoLocal(d); };
 
-    /* Για ποια μέρα καταγράφεις. Ξεκινά πάντα από σήμερα· αν ξέχασες να
-       γράψεις κάτι, διαλέγεις «Χθες» και όλα πάνε στη σωστή ημερομηνία. */
-    let LOG_DATE = null;
-    const logDate = () => {
-      if (!LOG_DATE || LOG_DATE > today()) LOG_DATE = null;
-      return LOG_DATE || today();
-    };
+    /* Οι καταγραφές πάνε πάντα στη σημερινή μέρα· παλιές ημερομηνίες
+       διορθώνονται από το Ιστορικό. */
+    const logDate = () => today();
 
     const shortDate = (iso) => {
       const d = new Date(iso + 'T00:00:00');
@@ -7115,38 +7122,8 @@ function __bootWorkout() {
       });
     }
 
-    function renderLogDate() {
-      const host = $('#log-date');
-      if (!host) return;
-      const cur = logDate();
-      const quick = [[today(), 'Σήμερα'], [daysAgo(1), 'Χθες'], [daysAgo(2), 'Προχθές']];
-      const other = !quick.some(([d]) => d === cur);
-      host.innerHTML =
-        quick.map(([d, l]) =>
-          `<button type="button" class="chip" data-logdate="${d}" data-on="${d === cur}">${l}</button>`).join('') +
-        `<input type="date" id="log-date-pick" aria-label="Άλλη μέρα" max="${today()}" value="${other ? cur : ''}" data-on="${other}">` +
-        (cur !== today()
-          ? `<span class="log-date-note">Καταγράφεις για ${esc(shortDate(cur))} — όχι για σήμερα.</span>`
-          : '');
-      $$('[data-logdate]', host).forEach((b) =>
-        b.addEventListener('click', () => setLogDate(b.dataset.logdate)));
-      const pick = $('#log-date-pick', host);
-      pick.addEventListener('change', () => { if (pick.value) setLogDate(pick.value); });
-    }
-
-    function setLogDate(d) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > today()) return;
-      LOG_DATE = d === today() ? null : d;
-      state.editing = null;
-      state.actEditing = false;
-      state.actType = null;
-      stopTimer();
-      renderTrain();
-    }
-
     function renderTrain() {
       renderDaystrip();
-      renderLogDate();
       const day = PROGRAM[state.day] || { name: '—', focus: '' };
       const wd = weekdayOf(state.day);
       $('#day-title').textContent = wd ? `${wd} · ${day.name}` : day.name;
@@ -8409,6 +8386,8 @@ function __bootWorkout() {
     }
 
     /* Τι σημαίνει ο στόχος του πελάτη: αριθμοί του προγράμματος και οδηγίες. */
+    let goalPanelOpen = false;
+
     function renderGoalPanel() {
       const host = $('#goal-panel');
       if (!host) return;
@@ -8423,7 +8402,9 @@ function __bootWorkout() {
       const food = (NUTRITION.goals.find((g) => g.id === p.nutrition) || {});
       host.hidden = false;
       host.innerHTML =
-        `<h3>Ο στόχος σου: ${esc(p.label)}</h3>` +
+        `<details class="goal-details"${goalPanelOpen ? ' open' : ''}>` +
+        `<summary><h3>Ο στόχος σου: ${esc(p.label)}</h3><span class="goal-chev" aria-hidden="true">›</span></summary>` +
+        `<div class="goal-body">` +
         `<p class="hint">${esc(p.tagline || '')}</p>` +
         (b.who ? `<p class="hint">${esc(b.who)}</p>` : '') +
         roles.map(([r, l]) => row(l,
@@ -8433,7 +8414,9 @@ function __bootWorkout() {
         (food.hint ? `<p class="hint"><strong>Διατροφή.</strong> ${esc(food.hint)} Πρωτεΐνη ${(food.range || [1.6, 2.2]).join('–')} g/kg.</p>` : '') +
         (b.phase ? `<p class="hint"><strong>Διάρκεια.</strong> ${esc(b.phase)}</p>` : '') +
         (p.note ? `<div class="warn">${esc(p.note)}</div>` : '') +
-        `<p class="hint">Τον στόχο τον αλλάζεις από τις Ρυθμίσεις της εφαρμογής κρατήσεων.</p>`;
+        `<p class="hint">Τον στόχο τον αλλάζεις από τις Ρυθμίσεις της εφαρμογής κρατήσεων.</p>` +
+        `</div></details>`;
+      $('details', host).addEventListener('toggle', (e) => { goalPanelOpen = e.target.open; });
     }
 
     function renderConfig() {

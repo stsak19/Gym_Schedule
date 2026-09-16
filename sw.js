@@ -8,7 +8,7 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "combine-v19";
+const VERSION = "combine-v20";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
 
