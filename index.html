@@ -2070,6 +2070,18 @@ const PRIMARY_GOALS = [
 ];
 const PRIMARY_LABELS = PRIMARY_GOALS.reduce((o, g) => { o[g.key] = g.label; return o; }, {});
 
+/* Το επίπεδο εμπειρίας. Κλειδιά ίδια με τα LEVELS του καρνέ και με τον
+   έλεγχο της clients.goal_level στη βάση. */
+const LEVEL_GOALS = [
+  { key: "beginner", label: "Αρχάριος",
+    desc: "Κάτω από 6 μήνες σταθερής προπόνησης με βάρη. Λιγότερα σετ, μαθαίνεις την κίνηση και ανεβάζεις κιλά σχεδόν κάθε εβδομάδα." },
+  { key: "intermediate", label: "Μέσος",
+    desc: "6 μήνες έως 2 χρόνια σταθερής προπόνησης. Το πρόγραμμα του στόχου σου όπως είναι." },
+  { key: "advanced", label: "Προχωρημένος",
+    desc: "Πάνω από 2 χρόνια και η πρόοδος έχει αρχίσει να αργεί. Ένα σετ παραπάνω, πιο κοντά στην αποτυχία, εναλλαγή βαριάς, μέτριας και ελαφριάς μέρας." },
+];
+const LEVEL_LABELS = LEVEL_GOALS.reduce((o, g) => { o[g.key] = g.label; return o; }, {});
+
 const GOAL_GROUPS = [
   { title: "Πού θέλεις έμφαση", keys: ["core", "vtaper", "glutes", "arms", "posture"] },
   { title: "Κίνηση και ευεξία", keys: ["flexibility", "pain_relief", "stress", "sleep", "energy", "routine", "classes"] },
@@ -3196,10 +3208,12 @@ function SettingsTab({ session, flash, theme, setTheme, onLogout, onAccountDelet
    η διαχείριση και το καρνέ προπόνησης — μία πηγή, τρεις οθόνες. */
 function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) {
   const [primary, setPrimary] = useState("");
+  const [level, setLevel] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState("");
+  const [savedLevel, setSavedLevel] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -3208,9 +3222,12 @@ function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) 
       if (!alive) return;
       if (!error && data) {
         const p = typeof data.primary === "string" ? data.primary : "";
+        const lv = LEVEL_LABELS[data.level] ? data.level : "";
         setPrimary(p);
         setSaved(p);
-        setOpen(!p);
+        setLevel(lv);
+        setSavedLevel(lv);
+        setOpen(!p || !lv);
       } else {
         setOpen(true);
       }
@@ -3223,15 +3240,18 @@ function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) 
      με το κουμπί. Οι παλιοί δευτερεύοντες και δικοί στόχοι δεν υπάρχουν
      πια στην οθόνη, οπότε καθαρίζουν. */
   const choose = (k) => { if (!saving) setPrimary(k); };
+  const chooseLevel = (k) => { if (!saving) setLevel(k); };
+  const dirty = primary !== saved || level !== savedLevel;
 
   const save = async () => {
-    if (!primary || saving) return;
+    if (!primary || !level || saving) return;
     setSaving(true);
     const { data, error } = await sb.rpc("save_goals", {
       p_client_id: session.clientId,
       p_goals: [],
       p_custom: [],
       p_primary: primary,
+      p_level: level,
     });
     setSaving(false);
     if (error || !data || data.ok !== true) {
@@ -3239,9 +3259,13 @@ function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) 
       return;
     }
     const p = typeof data.primary === "string" ? data.primary : primary;
+    const lv = LEVEL_LABELS[data.level] ? data.level : level;
     setPrimary(p);
     setSaved(p);
+    setLevel(lv);
+    setSavedLevel(lv);
     setOpen(false);
+    if (window.__workoutReloadGoals) window.__workoutReloadGoals();
     if (onGoalsChange) onGoalsChange(!!p);
     flash("Αποθηκεύτηκε");
   };
@@ -3290,21 +3314,59 @@ function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) 
                     );
                   })}
                 </div>
-                <Button size="lg" className="mt-3" disabled={!primary || saving || primary === saved} onClick={save}>
-                  {saving ? "Αποθήκευση…" : primary && primary === saved ? "Αποθηκευμένο" : "Αποθήκευση"}
+
+                <div className="mt-5 border-t border-neutral-300 pt-4">
+                  <div className="f-display text-[13px] font-bold uppercase tracking-wide">Επίπεδο</div>
+                  <p className="f-text mt-1 text-[13px] leading-relaxed text-neutral-600">
+                    Πόση εμπειρία έχεις με τα βάρη; Από αυτό αλλάζουν τα σετ, οι επαναλήψεις και η ένταση.
+                  </p>
+                  <div className="mt-2 flex flex-col">
+                    {LEVEL_GOALS.map((g) => {
+                      const on = level === g.key;
+                      return (
+                        <div key={g.key}>
+                          <button type="button" disabled={saving} onClick={() => chooseLevel(g.key)}
+                            className="flex w-full items-start gap-3 py-2 text-left">
+                            <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black ${
+                              on ? "bg-black" : "bg-white"}`}>
+                              {on && <span className="h-[7px] w-[7px] rounded-full bg-white" />}
+                            </span>
+                            <span className={`f-text text-[16px] leading-snug ${on ? "font-bold" : ""}`}>{g.label}</span>
+                          </button>
+                          {on && (
+                            <p className="f-text mb-2 ml-8 text-[14px] leading-relaxed text-neutral-600">{g.desc}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <Button size="lg" className="mt-3" disabled={!primary || !level || saving || !dirty} onClick={save}>
+                  {saving ? "Αποθήκευση…" : primary && level && !dirty ? "Αποθηκευμένο" : "Αποθήκευση"}
                 </Button>
-                {saved && (
+                {!level && primary && (
+                  <p className="f-text mt-2 text-[13px] text-neutral-500">Διάλεξε και το επίπεδό σου.</p>
+                )}
+                {saved && savedLevel && (
                   <Button variant="ghost" className="mt-2 w-full" disabled={saving}
-                    onClick={() => { setPrimary(saved); setOpen(false); }}>
+                    onClick={() => { setPrimary(saved); setLevel(savedLevel); setOpen(false); }}>
                     Κλείσιμο
                   </Button>
                 )}
               </div>
             ) : (
               <div className="mt-4 flex items-center justify-between gap-3">
-                <span className="f-display border border-black bg-black px-3 py-2 text-[16px] font-bold uppercase tracking-wide text-white">
-                  {PRIMARY_LABELS[primary] || primary}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="f-display border border-black bg-black px-3 py-2 text-[16px] font-bold uppercase tracking-wide text-white">
+                    {PRIMARY_LABELS[saved] || saved}
+                  </span>
+                  {savedLevel && (
+                    <span className="f-display border border-black px-3 py-2 text-[14px] font-bold uppercase tracking-wide">
+                      {LEVEL_LABELS[savedLevel]}
+                    </span>
+                  )}
+                </div>
                 <button type="button" onClick={() => setOpen(true)}
                   className="f-display text-[14px] font-bold uppercase tracking-wide underline">
                   Άλλαξε
@@ -5062,12 +5124,6 @@ loadAppSettings().then(() => {
     </div>
 
     <div class="panel" id="goal-panel" hidden></div>
-
-    <div class="panel">
-      <h3>Επίπεδο</h3>
-      <p class="hint">Πόση εμπειρία έχεις με τα βάρη; Από αυτό αλλάζουν τα σετ, οι επαναλήψεις και η ένταση.</p>
-      <div class="level-pick" id="cfg-level"></div>
-    </div>
 
     <div class="panel">
       <h3>Μέρες την εβδομάδα</h3>
@@ -6966,6 +7022,7 @@ function __bootWorkout() {
       const other = (data && data.other) || '';
       return {
         primary: typeof (data && data.primary) === 'string' ? data.primary : '',
+        level: typeof (data && data.level) === 'string' ? data.level : '',
         goals: Array.isArray(data && data.goals) ? data.goals : [],
         custom: custom.length || !other ? custom : [other],
         other,
@@ -8674,12 +8731,17 @@ function __bootWorkout() {
       if (!data) return;
       GOALS = {
         primary: typeof data.primary === 'string' ? data.primary : '',
+        level: LEVELS[data.level] ? data.level : '',
         goals: Array.isArray(data.goals) ? data.goals : [],
         custom: Array.isArray(data.custom) ? data.custom : []
       };
 
+      /* Το επίπεδο διαλέγεται πια στις Ρυθμίσεις των κρατήσεων, μαζί με
+         τον στόχο. Χωρίς επιλογή εκεί μένει ό,τι είχε το καρνέ. */
+      const lvl = GOALS.level || state.plan.config.level || DEFAULT_LEVEL;
+
       const c = goalConfig();
-      if (!c) { renderConfig(); return; }
+      if (!c) { applyPlanConfig({ ...state.plan.config, level: lvl }); renderConfig(); return; }
 
       /* Το πρόγραμμα ακολουθεί πάντα τους στόχους. Οι μέρες μένουν όπως
          τις έχει διαλέξει ο πελάτης — την πρώτη φορά τις προτείνει το
@@ -8689,6 +8751,7 @@ function __bootWorkout() {
            αλλάζει μόνο ο στόχος. */
         applyPlanConfig({
           ...state.plan.config,
+          level: lvl,
           preset: c.preset,
           emphasis: [...c.emphasis],
           source: 'goals'
@@ -8700,7 +8763,7 @@ function __bootWorkout() {
       const days = first
         ? ((PRESETS[c.preset] || {}).days || 3)
         : currentDays();
-      applyPlanConfig(configFor(days));
+      applyPlanConfig({ ...configFor(days), level: lvl });
       renderConfig();
     }
 
@@ -8747,7 +8810,7 @@ function __bootWorkout() {
         (food.hint ? `<p class="hint"><strong>Διατροφή.</strong> ${esc(food.hint)} Πρωτεΐνη ${(food.range || [1.6, 2.2]).join('–')} g/kg.</p>` : '') +
         (b.phase ? `<p class="hint"><strong>Διάρκεια.</strong> ${esc(b.phase)}</p>` : '') +
         (p.note ? `<div class="warn">${esc(p.note)}</div>` : '') +
-        `<p class="hint">Τον στόχο τον αλλάζεις από τις Ρυθμίσεις της εφαρμογής κρατήσεων.</p>` +
+        `<p class="hint">Τον στόχο και το επίπεδο τα αλλάζεις από τις Ρυθμίσεις της εφαρμογής κρατήσεων.</p>` +
         `</div></details>`;
       $('details', host).addEventListener('toggle', (e) => { goalPanelOpen = e.target.open; });
     }
@@ -9676,6 +9739,9 @@ function __bootWorkout() {
     /* Οι στόχοι του πελάτη, από τη βάση. Αργούν λίγο — η οθόνη είναι
        ήδη στημένη και απλώς ενημερώνεται όταν έρθουν. */
     loadGoals();
+    /* Όταν ο πελάτης αλλάξει στόχο ή επίπεδο στις κρατήσεις, το καρνέ
+       ξαναδιαβάζει χωρίς να χρειαστεί επανεκκίνηση. */
+    window.__workoutReloadGoals = loadGoals;
 
     /* Πρώτος γύρος συγχρονισμού μόλις σταθεί η οθόνη. */
     store.syncNow();
@@ -9726,6 +9792,7 @@ function __bootWorkout() {
     if (themeMeta) themeMeta.setAttribute("content", "#0a0a0a");
     clientTitle = document.title;
     window.scrollTo(0, 0);
+    if (loaded && window.__workoutReloadGoals) window.__workoutReloadGoals();
     load();
   }
 
