@@ -8,7 +8,7 @@
    σβήνει η παλιά μνήμη και οι πελάτες παίρνουν τα καινούρια αρχεία.
 */
 
-const VERSION = "app-v15";
+const VERSION = "combine-v19";
 const SHELL = VERSION + "-shell";
 const RUNTIME = VERSION + "-runtime";
 
@@ -24,6 +24,8 @@ const SHELL_FILES = [
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
+  /* Το καρνέ προπόνησης δεν έχει δικά του αρχεία πια: κώδικας και
+     στυλ είναι μέσα στο index.html. */
 ];
 
 /* Βιβλιοθήκες και γραμματοσειρές από τρίτους. Οι διευθύνσεις έχουν
@@ -32,6 +34,8 @@ const SHELL_FILES = [
 const CDN_HOSTS = [
   "unpkg.com",
   "cdn.tailwindcss.com",
+  "cdnjs.cloudflare.com",  /* pdfmake: οι εκτυπώσεις της διαχείρισης */
+  "esm.sh",                /* supabase-js: ο συγχρονισμός του καρνέ */
   "fonts.googleapis.com",
   "fonts.gstatic.com",
 ];

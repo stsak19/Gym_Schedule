@@ -121,8 +121,8 @@ html, body { margin: 0; background: #fff; }
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-const SUPABASE_URL = "https://qkjceupbxdujgytikxug.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFramNldXBieGR1amd5dGlreHVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDI0NTUsImV4cCI6MjEwNDExODQ1NX0.cSsylfCvbqlvYgoeryf08jEVzvTjZGXli4dl7ZE7_Pc";
+const SUPABASE_URL = "https://sdddhzrbqkfayodyjnnz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkZGRoenJicWtmYXlvZHlqbm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NjUwMzMsImV4cCI6MjEwNDQ0MTAzM30.Y0cQV6tJFltnl2hYKJXzhxzVb0XYOB9DK5xGCkUbEQg";
 const TOKEN_KEY = "kinesis_admin_token";
 const THEME_KEY = "kinesis_admin_theme";
 
@@ -410,6 +410,12 @@ const parseISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const fmtDay = (s) => { const d = parseISO(s); return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 const fmtDayLong = (s) => { const d = parseISO(s); return `${DAYS_LONG[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+/* Πότε ξεκινάει μια ώρα, σε χιλιοστά — για να ξέρουμε αν πέρασε. */
+const slotStart = (dstr, t) => {
+  const d = parseISO(dstr);
+  d.setHours(Number(String(t).slice(0, 2)) || 0, 0, 0, 0);
+  return d.getTime();
+};
 
 /* ---------- Στόχοι πελατών ----------
    Ίδια κλειδιά με τη goal_keys() στη βάση και με το index.html.
@@ -432,8 +438,26 @@ const GOAL_LABELS = {
   energy: "Ενέργεια για την καθημερινότητα",
   routine: "Σταθερή ρουτίνα άσκησης",
   classes: "Ομαδικά μαθήματα και παρέα",
+  glutes: "Γλουτοί",
+  arms: "Χέρια",
+  vtaper: "Ώμοι και πλάτη",
 };
 const goalLabel = (k) => GOAL_LABELS[k] || k;
+
+/* Ο κύριος στόχος. Ένας ανά πελάτη, και από αυτόν βγαίνει το πρόγραμμα
+   στο καρνέ προπόνησης. Ίδια κλειδιά με τη goal_primary_keys(). */
+const PRIMARY_LABELS = {
+  recomp: "Recomposition",
+  cut: "Γράμμωση",
+  bulk: "Lean bulk",
+  strength: "Δύναμη",
+  endurance: "Αντοχή",
+  maintain: "Διατήρηση",
+  beginner: "Πρώτη φορά στο γυμναστήριο",
+  rehab: "Επιστροφή μετά από τραυματισμό",
+  event: "Προετοιμασία για αγώνα ή τεστ",
+};
+const primaryLabel = (k) => PRIMARY_LABELS[k] || k;
 
 /* ---------- Νέες κρατήσεις ----------
    Κάθε λεπτό ρωτάμε τον διακομιστή τι μπήκε από την τελευταία φορά.
@@ -1024,7 +1048,6 @@ const TABS = [
   ["hours", "Χωρητικότητα"],
   ["people", "Πελάτες"],
   ["goals", "Στόχοι πελατών"],
-  ["stats", "Στατιστικά"],
   ["access", "Είσοδος, QR & NFC"],
   ["newsletter", "Ενημερώσεις"],
   ["announce", "Ειδοποιήσεις"],
@@ -1197,7 +1220,6 @@ function App() {
           chatOn={chatOn} chatSaving={chatSaving} onToggleChat={toggleChat} />
       )}
       {tab === "goals" && <Goals {...props} />}
-      {tab === "stats" && <Stats {...props} />}
       {tab === "access" && (
         <React.Fragment>
           <Station {...props} />
@@ -1326,6 +1348,130 @@ function Login({ onDone }) {
   );
 }
 
+/* ---------- Χειροκίνητη προσθήκη σε ώρα ----------
+   Για όποιον ήρθε χωρίς να περάσει από την εφαρμογή. Γράφεις δυο
+   γράμματα από το όνομα, εμφανίζεται, τον πατάς και μπήκε.
+
+   Αν η ώρα έχει ήδη περάσει μπαίνει ως παρών· αν είναι μπροστά,
+   ως κράτηση. Όταν κάτι εμποδίζει — γεμάτη ώρα, χωρίς πακέτο,
+   χωρίς υπόλοιπο — δεν το κάνουμε σιωπηλά: το λέμε και ρωτάμε. */
+function AddPerson({ date, time, past, onDone, flash, onAuthFail }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [ask, setAsk] = useState(null);
+
+  /* Μισό δευτερόλεπτο ησυχίας πριν ρωτήσουμε τον διακομιστή, ώστε να
+     μη φεύγει κλήση σε κάθε πλήκτρο. */
+  useEffect(() => {
+    if (!open) return;
+    const term = q.trim();
+    if (term.length < 2) { setRows([]); setSearching(false); return; }
+    setSearching(true);
+    let alive = true;
+    const t = setTimeout(async () => {
+      const { data, error } = await rpc("admin_client_search", { p_q: term });
+      if (!alive) return;
+      setSearching(false);
+      if (error === "AUTH") { onAuthFail(); return; }
+      if (error) { flash("Δεν έγινε η αναζήτηση"); return; }
+      setRows(Array.isArray(data) ? data : []);
+    }, 400);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q, open, onAuthFail, flash]);
+
+  const reset = () => { setQ(""); setRows([]); setAsk(null); setOpen(false); };
+
+  const add = async (c, force) => {
+    setBusy(c.id);
+    const { data, error } = await rpc("admin_walk_in", {
+      p_client_id: c.id,
+      p_date: date,
+      p_time: time,
+      p_status: past ? "checked_in" : "booked",
+      p_force: !!force,
+    });
+    setBusy(null);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) { flash("Κάτι πήγε στραβά"); return; }
+    if (!data?.ok) {
+      if (data?.needs_force) { setAsk({ client: c, reason: data.error }); return; }
+      flash(data?.error || "Δεν μπήκε");
+      return;
+    }
+    reset();
+    flash(data.kind === "already"
+      ? `${c.name}: ήταν ήδη μέσα στις ${time}`
+      : past ? `${c.name} · παρών στις ${time}` : `${c.name} · κράτηση στις ${time}`);
+    onDone();
+  };
+
+  if (!open) {
+    return (
+      <div className="mt-3 border-t border-neutral-300 pt-3">
+        <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+          + Πρόσθεσε με το όνομα
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-neutral-300 pt-3">
+      <div className="f-display text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-400">
+        {past ? `Ποιος ήρθε στις ${time}` : `Ποιον να βάλω στις ${time}`}
+      </div>
+
+      <input value={q} autoFocus
+        onChange={(e) => { setQ(e.target.value); setAsk(null); }}
+        placeholder="Όνομα ή τηλέφωνο"
+        className="f-text mt-2 h-11 w-full border border-black bg-white px-3 text-[15px] outline-none" />
+
+      {ask ? (
+        <div className="mt-3 border-2 border-black p-3">
+          <div className="f-text text-[13px] leading-snug">{ask.reason}</div>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" disabled={busy === ask.client.id}
+              onClick={() => { const c = ask.client; setAsk(null); add(c, true); }}>
+              Πρόσθεσέ τον έτσι κι αλλιώς
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAsk(null)}>Άκυρο</Button>
+          </div>
+        </div>
+      ) : q.trim().length < 2 ? (
+        <div className="f-text py-3 text-[13px] text-neutral-400">
+          Γράψε τουλάχιστον δύο γράμματα.
+        </div>
+      ) : searching ? (
+        <div className="f-text py-3 text-[13px] text-neutral-400">Αναζήτηση…</div>
+      ) : rows.length === 0 ? (
+        <div className="f-text py-3 text-[13px] text-neutral-400">Κανένας με αυτό το όνομα.</div>
+      ) : (
+        <div className="mt-2 divide-y divide-neutral-200 border-y border-neutral-300">
+          {rows.map((c) => (
+            <button key={c.id} disabled={busy === c.id} onClick={() => add(c, false)}
+              className="flex w-full items-center justify-between gap-3 py-2.5 text-left disabled:opacity-50">
+              <span className="min-w-0">
+                <span className="f-text block truncate text-[15px]">{c.name}</span>
+                <span className="f-mono block text-[12px] text-neutral-500">{c.phone}</span>
+              </span>
+              <span className="f-mono shrink-0 text-[12px] text-neutral-500">
+                {c.credits_total == null ? "χωρίς πακέτο" : `${c.credits_left} υπόλ.`}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-2">
+        <Button variant="ghost" size="sm" onClick={reset}>Κλείσιμο</Button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Schedule ---------- */
 function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seenDays, onDaySeen }) {
   const todayISO = iso(new Date());
@@ -1377,12 +1523,32 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
     setOpen(focus.time || null);
   }, [focus]);
 
-  /* Μία μέρα πίσω, για να βλέπει τι έγινε χθες. Μπροστά όσες μέρες
-     ανοίγει το πρόγραμμα στον πελάτη — ό,τι λένε οι ρυθμίσεις. */
+  /* Δύο εβδομάδες πίσω, για να μπορεί να συμπληρώσει με το χέρι
+     κάποιον που ήρθε και δεν πέρασε από την εφαρμογή. Μπροστά όσες
+     μέρες ανοίγει το πρόγραμμα στον πελάτη — ό,τι λένε οι ρυθμίσεις. */
+  const DAYS_BACK = 14;
   const days = useMemo(() => {
     const base = new Date(); base.setHours(0, 0, 0, 0);
-    return Array.from({ length: MAX_DAYS_AHEAD + 2 }, (_, i) => iso(addDays(base, i - 1)));
+    return Array.from({ length: MAX_DAYS_AHEAD + 1 + DAYS_BACK },
+      (_, i) => iso(addDays(base, i - DAYS_BACK)));
   }, []);
+
+  /* Με δύο εβδομάδες πίσω, η λωρίδα ξεκινάει μακριά από το σήμερα.
+     Την κυλάμε ώστε η επιλεγμένη μέρα να είναι πάντα μπροστά στα
+     μάτια — χωρίς κίνηση την πρώτη φορά, για να μη «πηδήξει». */
+  const stripRef = React.useRef(null);
+  const stripInit = React.useRef(false);
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const el = strip.querySelector('[data-day="' + date + '"]');
+    if (!el) return;
+    strip.scrollTo({
+      left: el.offsetLeft - (strip.clientWidth - el.offsetWidth) / 2,
+      behavior: stripInit.current ? "smooth" : "auto",
+    });
+    stripInit.current = true;
+  }, [date]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1411,9 +1577,10 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
   const fill = totalCap ? Math.round((total / totalCap) * 100) : 0;
   const cancelledPeople = data?.cancelled_people || [];
 
-  /* Στη λίστα εμφανίζονται μόνο οι ώρες που έχουν τουλάχιστον μία
-     κράτηση. Τα σύνολα πιο πάνω υπολογίζονται από όλες τις ώρες. */
-  const bookedSlots = slots.filter((s) => (s.people || []).length > 0);
+  /* Στη λίστα μπαίνει κάθε ανοιχτή ώρα — ακόμα κι άδεια — ώστε να
+     μπορεί να ανοίξει όποια θέλει και να βάλει κάποιον με το χέρι.
+     Οι κλειστές ώρες (θέσεις 0) φαίνονται μόνο αν έχουν κάποιον μέσα. */
+  const bookedSlots = slots.filter((s) => s.capacity > 0 || (s.people || []).length > 0);
 
   const openDetail = (key) => setDetail(detail === key ? null : key);
 
@@ -1458,11 +1625,11 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
 
   return (
     <div>
-      <div className="flex gap-2 overflow-x-auto px-5 pb-2 pt-6 sm:px-6">
+      <div ref={stripRef} className="flex gap-2 overflow-x-auto px-5 pb-2 pt-6 sm:px-6">
         {days.map((dd0) => {
           const dd = parseISO(dd0), on = dd0 === date, isToday = dd0 === todayISO;
           return (
-            <button key={dd0} onClick={() => pickDay(dd0)}
+            <button key={dd0} data-day={dd0} onClick={() => pickDay(dd0)}
               className={`relative flex h-[62px] w-[56px] shrink-0 flex-col items-center justify-center border-2 ${
                 on ? "border-black bg-black text-white" : "border-neutral-300 bg-white text-neutral-700 hover:border-black"}`}>
               <span className="f-text text-[10px] uppercase text-neutral-400">{DAYS[dd.getDay()]}</span>
@@ -1520,13 +1687,13 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
         </div>
       )}
 
-      <h3 className="f-display mt-9 px-5 text-[14px] sm:px-6 font-bold uppercase tracking-wide text-neutral-500">Κρατήσεις ανά ώρα</h3>
+      <h3 className="f-display mt-9 px-5 text-[14px] sm:px-6 font-bold uppercase tracking-wide text-neutral-500">Οι ώρες της ημέρας</h3>
 
       {loading ? (
         <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>
       ) : bookedSlots.length === 0 ? (
         <div className="f-text mx-5 mt-3 border-2 border-dashed border-neutral-300 py-12 text-center text-[14px] text-neutral-500 sm:mx-6">
-          Καμία κράτηση αυτή την ημέρα.
+          Κλειστά — καμία ενεργή ώρα αυτή την ημέρα.
         </div>
       ) : (
         <div className="mt-3 divide-y divide-neutral-300 border-y-2 border-black">
@@ -1595,6 +1762,10 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                         Λίστα αναμονής: {s.waiting.join(", ")}
                       </div>
                     )}
+
+                    <AddPerson date={date} time={s.slot_time}
+                      past={slotStart(date, s.slot_time) <= nowMs}
+                      onDone={load} flash={flash} onAuthFail={onAuthFail} />
                   </div>
                 )}
               </div>
@@ -2492,23 +2663,41 @@ async function exportCredits({ clientId, name, flash, onAuthFail }) {
   }
 }
 
-/* Πίτα: μαύρο οι διαθέσιμες, γκρι οι χρησιμοποιημένες. Τα χρώματα
-   περνάνε από text-* ώστε να τα γυρίζει και το σκούρο θέμα. */
-function CreditsPie({ total, used, size = 180 }) {
+/* Πίτα με τρία κομμάτια: μαύρο οι διαθέσιμες, κίτρινο οι κρατημένες
+   (κλεισμένες ώρες που δεν έχουν γίνει ακόμα), γκρι οι
+   χρησιμοποιημένες. Το μαύρο και το γκρι περνάνε από text-* ώστε να τα
+   γυρίζει το σκούρο θέμα· το κίτρινο μένει ίδιο και στα δύο. */
+const CREDIT_HELD_COLOR = "#EAB308";
+
+function CreditsPie({ total, used, held, size = 180 }) {
   const safeTotal = Math.max(0, Number(total) || 0);
   const safeUsed = Math.min(safeTotal, Math.max(0, Number(used) || 0));
+  const safeHeld = Math.min(safeUsed, Math.max(0, Number(held) || 0));
   const left = safeTotal - safeUsed;
-  const pct = safeTotal ? (left / safeTotal) * 100 : 0;
+  const done = safeUsed - safeHeld;
   const r = 15.9155;
+  const pct = (n) => (safeTotal ? (n / safeTotal) * 100 : 0);
+  const parts = [
+    { n: left, cls: "text-black" },
+    { n: safeHeld, cls: "", color: CREDIT_HELD_COLOR },
+    { n: done, cls: "text-neutral-300" },
+  ];
+  let acc = 0;
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg viewBox="0 0 42 42" width={size} height={size} aria-hidden="true">
-        <circle cx="21" cy="21" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-neutral-300" />
-        {pct > 0 && (
-          <circle cx="21" cy="21" r={r} fill="none" stroke="currentColor" strokeWidth="6"
-            className="text-black"
-            strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset="25" />
-        )}
+        <circle cx="21" cy="21" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-neutral-200" />
+        {parts.map((p, i) => {
+          const slice = pct(p.n);
+          const offset = 25 - acc;
+          acc += slice;
+          if (slice <= 0) return null;
+          return (
+            <circle key={i} cx="21" cy="21" r={r} fill="none" stroke={p.color || "currentColor"} strokeWidth="6"
+              className={p.cls}
+              strokeDasharray={`${slice} ${100 - slice}`} strokeDashoffset={offset} />
+          );
+        })}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div className="f-mono text-[38px] leading-none tracking-tight">{left}</div>
@@ -2522,6 +2711,10 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
   const has = client.credits_total !== null && client.credits_total !== undefined;
   const total = has ? client.credits_total : 0;
   const used = has ? (client.credits_used || 0) : 0;
+  /* Κρατημένες: χρεωμένες ώρες που δεν έχουν γίνει ακόμα. Έρχονται από
+     τη βάση ώστε να μετράνε μόνο οι κρατήσεις του τρέχοντος πακέτου. */
+  const held = has ? Math.min(used, client.credits_held || 0) : 0;
+  const spent = used - held;
   const [mode, setMode] = useState(null); // null | "renew" | "adjust" | "clear"
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2549,10 +2742,11 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
     onUpdated({
       credits_total: data.credits_total,
       credits_used: data.credits_used,
+      credits_held: data.credits_held || 0,
       credits_since: data.credits_since,
     });
     flash(mode === "renew" ? (has ? "Το πακέτο ανανεώθηκε" : "Το πακέτο ορίστηκε")
-      : mode === "adjust" ? "Το σύνολο άλλαξε" : "Ο πελάτης δεν έχει πια όριο");
+      : mode === "adjust" ? "Το σύνολο άλλαξε" : "Το πακέτο καταργήθηκε — ο πελάτης δεν μπορεί να κλείσει ώρα");
     setMode(null); setValue("");
   };
 
@@ -2572,12 +2766,13 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
 
       {!has ? (
         <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-          Χωρίς όριο — ο πελάτης κλείνει όσες κρατήσεις θέλει. Όρισε πακέτο για να μετράει
-          η εφαρμογή: με την τελευταία κράτηση κλειδώνει και του ζητάει ανανέωση.
+          Χωρίς ενεργό πακέτο — ο πελάτης δεν μπορεί να κλείσει καμία ώρα. Όρισε πακέτο
+          για να ξεκλειδώσει η εφαρμογή: με την τελευταία κράτηση κλειδώνει ξανά και του
+          ζητάει ανανέωση.
         </p>
       ) : (
         <div className="mt-4 flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-          <CreditsPie total={total} used={used} />
+          <CreditsPie total={total} used={used} held={held} />
           <div className="w-full space-y-3">
             <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
               <span className="flex items-center gap-2 f-text text-[14px]">
@@ -2587,10 +2782,17 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
             </div>
             <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
               <span className="flex items-center gap-2 f-text text-[14px]">
+                <span className="inline-block h-3.5 w-3.5" style={{ background: CREDIT_HELD_COLOR }} />
+                Κρατημένες
+              </span>
+              <span className="f-mono text-[18px]">{held}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
+              <span className="flex items-center gap-2 f-text text-[14px]">
                 <span className="inline-block h-3.5 w-3.5 text-neutral-300" style={{ background: "currentColor" }} />
                 Χρησιμοποιημένες
               </span>
-              <span className="f-mono text-[18px]">{used}</span>
+              <span className="f-mono text-[18px]">{spent}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="f-text text-[14px] text-neutral-500">Σύνολο πακέτου</span>
@@ -2617,16 +2819,17 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
               <IconDownload size={14} /><span className="ml-2">{exporting ? "Εξαγωγή…" : "Εξαγωγή PDF"}</span>
             </Button>
           )}
-          {has && <Button variant="ghost" onClick={() => open("clear")}>Κατάργηση ορίου</Button>}
+          {has && <Button variant="ghost" onClick={() => open("clear")}>Κατάργηση πακέτου</Button>}
         </div>
       ) : mode === "clear" ? (
         <div className="mt-5 border-2 border-black p-4">
           <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
-            Ο/Η <strong>{client.name}</strong> θα κλείνει χωρίς όριο. Η πίτα και το ιστορικό του
-            πακέτου σβήνονται — αν τα θέλεις, κάνε πρώτα εξαγωγή.
+            Ο/Η <strong>{client.name}</strong> μένει χωρίς πακέτο και δεν θα μπορεί να κλείσει
+            καμία ώρα μέχρι να ανανεώσει. Η πίτα και το ιστορικό του πακέτου σβήνονται — αν
+            τα θέλεις, κάνε πρώτα εξαγωγή.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={save}>{busy ? "…" : "Ναι, χωρίς όριο"}</Button>
+            <Button disabled={busy} onClick={save}>{busy ? "…" : "Ναι, κατάργησέ το"}</Button>
             <Button variant="ghost" onClick={() => setMode(null)}>Άκυρο</Button>
           </div>
         </div>
@@ -3149,61 +3352,6 @@ function People({ flash, onAuthFail }) {
   );
 }
 
-/* ---------- Stats ---------- */
-function Stats({ flash, onAuthFail }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      const { data: d, error } = await rpc("admin_stats", {});
-      setLoading(false);
-      if (error === "AUTH") { onAuthFail(); return; }
-      if (error) { flash("Δεν φόρτωσαν τα στατιστικά"); return; }
-      setData(d);
-    })();
-  }, [flash, onAuthFail]);
-
-  if (loading) return <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>;
-
-  const t = data?.totals || {};
-  const perDay = (data?.per_day || []).map((d) => ({ label: DAYS[parseISO(d.date).getDay()], value: d.count }));
-  const perHour = (data?.per_hour || []).map((h) => ({ label: h.time, value: h.count }));
-  const top = perHour.slice().sort((a, b) => b.value - a.value).slice(0, 3);
-
-  return (
-    <div className="px-5 sm:px-6">
-      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Στατιστικά</h2>
-      <p className="f-text mt-1 text-[13px] text-neutral-500">Τελευταίες 7 ημέρες</p>
-
-      <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <Kpi label="Κρατήσεις" value={t.bookings ?? 0} />
-        <Kpi label="Check-ins" value={t.checkins ?? 0}
-          note={t.bookings ? `${Math.round((t.checkins / t.bookings) * 100)}%` : ""} />
-        <Kpi label="Δεν ήρθαν" value={t.noshows ?? 0} />
-        <Kpi label="Ακυρώσεις" value={t.cancels ?? 0} />
-      </div>
-
-      <h3 className="f-display mt-10 text-[14px] font-bold uppercase tracking-wide text-neutral-500">Κρατήσεις ανά ημέρα</h3>
-      <div className="mt-4"><Bars items={perDay} /></div>
-
-      <h3 className="f-display mt-10 text-[14px] font-bold uppercase tracking-wide text-neutral-500">Κρατήσεις ανά ώρα</h3>
-      <div className="mt-4"><Bars items={perHour} /></div>
-
-      <h3 className="f-display mt-10 text-[14px] font-bold uppercase tracking-wide text-neutral-500">Ώρες με τη μεγαλύτερη ζήτηση</h3>
-      <div className="mt-3 divide-y divide-neutral-300 border-y-2 border-black">
-        {top.map((x) => (
-          <div key={x.label} className="flex items-center justify-between py-3 text-[15px]">
-            <span className="f-mono">{x.label}</span>
-            <span className="f-mono text-neutral-500">{x.value} κρατήσεις</span>
-          </div>
-        ))}
-      </div>
-      <div className="h-10" />
-    </div>
-  );
-}
-
 /* ---------- QR (self-contained encoder) ---------- */
 const EXP = new Array(512), LOG = new Array(256);
 (() => { let x = 1; for (let i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; } for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255]; })();
@@ -3337,21 +3485,6 @@ function Access({ flash, onAuthFail }) {
     catch (e) { flash("Η αντιγραφή δεν είναι διαθέσιμη"); }
   };
 
-  /* Γράφει τον σύνδεσμο check-in κατευθείαν στο tag, με Web NFC. */
-  const [writing, setWriting] = useState(false);
-  const writeTag = async (text) => {
-    if (!text || !NFC_OK) return;
-    setWriting(true);
-    try {
-      const w = new NDEFReader();
-      await w.write({ records: [{ recordType: "url", data: text }] });
-      flash("Το tag γράφτηκε");
-    } catch (e) {
-      flash("Δεν γράφτηκε: " + (e.message || e));
-    }
-    setWriting(false);
-  };
-
   if (loading) return <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>;
   const checkinUrl = url ? url + (url.includes("?") ? "&" : "?") + "checkin=1" : "";
 
@@ -3402,28 +3535,6 @@ function Access({ flash, onAuthFail }) {
         </p>
       )}
 
-      <div className="mt-9 max-w-xl border-t-2 border-black pt-6">
-        <h3 className="f-display text-[14px] font-bold uppercase tracking-wide">NFC tag για check-in</h3>
-
-        {checkinUrl ? (
-          <div className="mt-3 border-2 border-black p-4">
-            <div className="f-display text-[11px] font-bold uppercase tracking-wide text-neutral-500">Σύνδεσμος check-in</div>
-            <div className="f-mono mt-1 select-all break-all text-[14px]">{checkinUrl}</div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => copy(checkinUrl)}>Αντιγραφή συνδέσμου</Button>
-              {NFC_OK && (
-                <Button variant="outline" size="sm" disabled={writing} onClick={() => writeTag(checkinUrl)}>
-                  {writing ? "Ακούμπησε το tag…" : "Γράψιμο στο tag"}
-                </Button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="f-text mt-3 text-[13px] text-neutral-500">
-            Συμπλήρωσε πρώτα τη διεύθυνση της εφαρμογής πιο πάνω και πάτα Αποθήκευση.
-          </p>
-        )}
-      </div>
       <div className="h-10" />
     </div>
   );
@@ -3955,10 +4066,21 @@ function Goals({ flash, onAuthFail }) {
   useEffect(() => { load(); }, [load]);
 
   const counts = (data && data.counts) || [];
+  const primaryCounts = (data && data.primary_counts) || [];
   const all = (data && data.clients) || [];
-  const rows = filter ? all.filter((c) => (c.goals || []).includes(filter)) : all;
+  const rows = !filter
+    ? all
+    : filter.kind === "primary"
+      ? all.filter((c) => c.primary === filter.key)
+      : all.filter((c) => (c.goals || []).includes(filter.key));
+  const filterName = filter
+    ? (filter.kind === "primary" ? primaryLabel(filter.key) : goalLabel(filter.key))
+    : "";
+  const sameFilter = (kind, key) => !!filter && filter.kind === kind && filter.key === key;
+  const pick = (kind, key) => setFilter(sameFilter(kind, key) ? null : { kind, key });
   const max = counts.reduce((m, c) => Math.max(m, c.count), 0) || 1;
-  const withOther = all.filter((c) => c.other).length;
+  const maxPrimary = primaryCounts.reduce((m, c) => Math.max(m, c.count), 0) || 1;
+  const withOther = all.filter((c) => (c.custom && c.custom.length) || c.other).length;
 
   const fmtWhen = (s) => {
     if (!s) return "";
@@ -3970,8 +4092,9 @@ function Goals({ flash, onAuthFail }) {
     <div className="px-5 sm:px-6">
       <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Στόχοι πελατών</h2>
       <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-        Ό,τι δήλωσε ο κάθε πελάτης στις ρυθμίσεις της εφαρμογής του. Μπορεί να
-        διαλέξει όσους στόχους θέλει, ή να γράψει δικό του.
+        Ό,τι δήλωσε ο κάθε πελάτης στις ρυθμίσεις της εφαρμογής του: έναν κύριο
+        στόχο, από τον οποίο βγαίνει το πρόγραμμά του, κι όσους άλλους θέλει.
+        Πάτα έναν στόχο για να δεις μόνο όσους τον έχουν.
       </p>
 
       {data === null ? (
@@ -3987,26 +4110,73 @@ function Goals({ flash, onAuthFail }) {
             <Kpi label="Έγραψαν δικό τους" value={withOther} />
           </div>
 
-          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-            Πόσοι διάλεξαν τι
-          </h3>
-          <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
-            {counts.map((c) => (
-              <button key={c.key} onClick={() => setFilter(filter === c.key ? null : c.key)}
-                className={`flex w-full items-center gap-3 py-2.5 text-left ${
-                  filter === c.key ? "bg-neutral-100" : ""}`}>
-                <span className="f-text w-[40%] shrink-0 truncate text-[14px]">{goalLabel(c.key)}</span>
-                <span className="block h-[12px] flex-1 border border-black">
-                  <span className="block h-full bg-black" style={{ width: `${(c.count / max) * 100}%` }} />
-                </span>
-                <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
-              </button>
-            ))}
-          </div>
+          {primaryCounts.length > 0 && (
+            <>
+              <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+                Κύριος στόχος
+              </h3>
+              <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+                Αυτός ορίζει το πρόγραμμα που βλέπει ο πελάτης στο καρνέ προπόνησης.
+              </p>
+              <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
+                {primaryCounts.map((c) => (
+                  <button key={c.key} onClick={() => pick("primary", c.key)}
+                    className={`flex w-full items-center gap-3 py-2.5 text-left ${
+                      sameFilter("primary", c.key) ? "bg-neutral-100" : ""}`}>
+                    <span className="f-text w-[40%] shrink-0 truncate text-[14px]">{primaryLabel(c.key)}</span>
+                    <span className="block h-[12px] flex-1 border border-black">
+                      <span className="block h-full bg-black" style={{ width: `${(c.count / maxPrimary) * 100}%` }} />
+                    </span>
+                    <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {counts.length > 0 && (
+            <>
+              <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+                Τι άλλο διάλεξαν
+              </h3>
+              <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
+                {counts.map((c) => (
+                  <button key={c.key} onClick={() => pick("goal", c.key)}
+                    className={`flex w-full items-center gap-3 py-2.5 text-left ${
+                      sameFilter("goal", c.key) ? "bg-neutral-100" : ""}`}>
+                    <span className="f-text w-[40%] shrink-0 truncate text-[14px]">{goalLabel(c.key)}</span>
+                    <span className="block h-[12px] flex-1 border border-black">
+                      <span className="block h-full bg-black" style={{ width: `${(c.count / max) * 100}%` }} />
+                    </span>
+                    <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {(data.custom_counts || []).length > 0 && (
+            <>
+              <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+                Όσα έγραψαν μόνοι τους
+              </h3>
+              <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
+                Δεν είναι στη λίστα μας. Αν κάτι επαναλαμβάνεται, αξίζει να μπει.
+              </p>
+              <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
+                {(data.custom_counts || []).map((c, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="f-text min-w-0 flex-1 text-[14px]">{c.text}</span>
+                    <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="mt-9 flex items-baseline justify-between gap-3">
             <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-              Ανά πελάτη {filter && `· ${goalLabel(filter)}`}
+              Ανά πελάτη {filter && `· ${filterName}`}
             </h3>
             {filter && (
               <Button variant="ghost" size="sm" onClick={() => setFilter(null)}>Καθαρισμός φίλτρου</Button>
@@ -4023,16 +4193,21 @@ function Goals({ flash, onAuthFail }) {
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
+                  {c.primary && (
+                    <span className="f-display border border-black bg-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                      {primaryLabel(c.primary)}
+                    </span>
+                  )}
                   {(c.goals || []).map((g) => (
                     <span key={g} className="f-display border border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
                       {goalLabel(g)}
                     </span>
                   ))}
-                  {c.other && (
-                    <span className="f-display border border-black bg-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-                      {c.other}
+                  {(c.custom && c.custom.length ? c.custom : c.other ? [c.other] : []).map((v, i) => (
+                    <span key={"c" + i} className="f-display border border-dashed border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
+                      {v}
                     </span>
-                  )}
+                  ))}
                 </div>
               </div>
             ))}
