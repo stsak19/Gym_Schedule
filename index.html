@@ -7906,40 +7906,80 @@ function __bootWorkout() {
 
     /* ---------- Χρονόμετρο ξεκούρασης ---------- */
 
+    /* Μετράμε με βάση την ώρα λήξης και όχι αφαιρώντας 1 κάθε δευτερόλεπτο.
+       Όταν σβήνει η οθόνη ή η εφαρμογή πάει στο παρασκήνιο, το κινητό
+       παγώνει τα setInterval· έτσι ο χρόνος μένει πάντα σωστός. */
+    const TIMER_KEY = 'pb3-rest-timer';
     let timerId = null;
-    let timerLeft = 0;
+    let timerEnd = 0;
     let timerTotal = 0;
+    let timerShown = -1;
 
-    function startTimer(seconds, label) {
-      stopTimer();
-      timerTotal = seconds;
-      timerLeft = seconds;
-      $('#timer').hidden = false;
-      $('#timer-label').textContent = 'Ξεκούραση · ' + label;
-      paintTimer();
-      timerId = setInterval(() => {
-        timerLeft--;
-        if (timerLeft <= 0) {
-          if (navigator.vibrate) navigator.vibrate([180, 90, 180]);
-          stopTimer();
-          return;
-        }
-        paintTimer();
-      }, 1000);
+    function timerRemaining() {
+      return Math.max(0, Math.ceil((timerEnd - Date.now()) / 1000));
     }
 
-    function paintTimer() {
-      const m = Math.floor(timerLeft / 60);
-      const s = String(timerLeft % 60).padStart(2, '0');
+    function startTimer(seconds, label, endAt) {
+      stopTimer();
+      timerTotal = seconds;
+      timerEnd = endAt || Date.now() + seconds * 1000;
+      timerShown = -1;
+      try {
+        localStorage.setItem(TIMER_KEY, JSON.stringify({ end: timerEnd, total: seconds, label }));
+      } catch (e) {}
+      $('#timer').hidden = false;
+      $('#timer-label').textContent = 'Ξεκούραση · ' + label;
+      tickTimer();
+      timerId = setInterval(tickTimer, 250);
+    }
+
+    function tickTimer() {
+      if (!timerId && timerEnd === 0) return;
+      const left = timerRemaining();
+      if (left <= 0) {
+        const late = Date.now() - timerEnd > 3000;
+        stopTimer();
+        if (!late && navigator.vibrate) navigator.vibrate([180, 90, 180]);
+        return;
+      }
+      if (left !== timerShown) {
+        timerShown = left;
+        paintTimer(left);
+      }
+    }
+
+    function paintTimer(left) {
+      const m = Math.floor(left / 60);
+      const s = String(left % 60).padStart(2, '0');
       $('#timer-count').textContent = `${m}:${s}`;
-      $('#timer-bar').style.width = (timerLeft / timerTotal) * 100 + '%';
+      $('#timer-bar').style.width = (timerTotal ? (left / timerTotal) * 100 : 0) + '%';
     }
 
     function stopTimer() {
       clearInterval(timerId);
       timerId = null;
+      timerEnd = 0;
+      timerShown = -1;
+      try { localStorage.removeItem(TIMER_KEY); } catch (e) {}
       $('#timer').hidden = true;
     }
+
+    /* Επιστροφή στην εφαρμογή: ενημέρωση αμέσως, χωρίς αναμονή. */
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && timerEnd) tickTimer();
+    });
+    window.addEventListener('pageshow', () => { if (timerEnd) tickTimer(); });
+
+    /* Αν το κινητό έκλεισε την εφαρμογή στη μέση της ξεκούρασης,
+       συνεχίζει από εκεί που έπρεπε να είναι. */
+    try {
+      const saved = JSON.parse(localStorage.getItem(TIMER_KEY) || 'null');
+      if (saved && saved.end > Date.now() && saved.total > 0) {
+        startTimer(saved.total, saved.label || '', saved.end);
+      } else if (saved) {
+        localStorage.removeItem(TIMER_KEY);
+      }
+    } catch (e) {}
 
     $('#timer-skip').addEventListener('click', stopTimer);
 
