@@ -5143,18 +5143,12 @@ loadAppSettings().then(() => {
     </div>
 
     <div class="panel goal-card" id="goal-ask-card">
-      <h3>Ζήτα βοήθεια από τον Προπονητή</h3>
+      <h3>Ο στόχος σου</h3>
       <p class="hint" id="goal-ask-hint">Πες μας τι θέλεις να πετύχεις και σε τι επίπεδο είσαι. Ο προπονητής το βλέπει και σου φτιάχνει πρόγραμμα.</p>
       <button type="button" class="btn btn-primary btn-block" id="goal-ask-btn">Ζήτα βοήθεια από τον Προπονητή</button>
     </div>
 
-    <div class="panel goal-card" id="goal-own-card">
-      <h3>Φτιάξε το δικό σου Πρόγραμμα</h3>
-      <p class="hint" id="goal-own-hint">Γράψε μόνος σου τις μέρες και τις ασκήσεις σου.</p>
-      <button type="button" class="btn btn-quiet btn-block" id="goal-own-btn">Φτιάξε το δικό σου Πρόγραμμα</button>
-    </div>
-
-    <div class="panel" id="goal-plan-panel"></div>
+    <div class="panel goal-card" id="goal-plan-panel"></div>
 
     <!-- Η φόρμα των στόχων, όταν πατηθεί το πρώτο κουτί. -->
     <div class="setup" id="goal-form" hidden>
@@ -10617,22 +10611,22 @@ function __bootWorkout() {
         title = 'Πρόγραμμα γυμναστή';
         hint = `${days}${tr.updated_at ? `, ενημερώθηκε ${fmtDay(tr.updated_at)}` : ''}.` +
           (tr.note ? `<br><br>${esc(tr.note).replace(/\n/g, '<br>')}` : '');
-        buttons = `<button type="button" class="btn btn-quiet" data-act="copy">Κάνε το δικό σου για αλλαγές</button>`;
+        buttons = `<button type="button" class="btn btn-quiet" data-act="copy">Κάνε το δικό σου για αλλαγές</button>` +
+          `<button type="button" class="btn btn-quiet" data-act="change">Άλλαξε πρόγραμμα</button>`;
       } else if (usingCustom()) {
         title = 'Δικό σου πρόγραμμα';
         hint = `${days}, όπως το έγραψες.`;
-        buttons = `<button type="button" class="btn btn-quiet" data-act="edit">Επεξεργασία</button>`;
+        buttons = `<button type="button" class="btn btn-quiet" data-act="edit">Επεξεργασία</button>` +
+          `<button type="button" class="btn btn-quiet" data-act="change">Άλλαξε πρόγραμμα</button>`;
       } else {
-        host.hidden = true;
-        host.innerHTML = '';
-        return;
+        title = 'Το πρόγραμμά σου';
+        hint = 'Δεν έχεις πρόγραμμα ακόμα. Πάρ’ το από τον γυμναστή σου ή γράψ’ το μόνος σου.';
+        buttons = `<button type="button" class="btn btn-primary" data-act="change">Διάλεξε πρόγραμμα</button>`;
       }
       host.hidden = false;
       host.innerHTML =
         `<h3>${title}</h3><p class="hint">${hint}</p>` +
-        `<div class="plan-mode-row">${buttons}` +
-        `<button type="button" class="btn btn-quiet" data-act="change">Άλλαξε πρόγραμμα</button>` +
-        `</div><div id="plan-mode-status"></div>`;
+        `<div class="plan-mode-row">${buttons}</div><div id="plan-mode-status"></div>`;
     }
 
     on('#goal-plan-panel', 'click', (e) => {
@@ -10643,14 +10637,14 @@ function __bootWorkout() {
         openBuilder(draftFromCurrent(),
           'Αντίγραφο του προγράμματος του γυμναστή. Ό,τι αλλάξεις εδώ γίνεται δικό σου πρόγραμμα· το δικό του μένει όπως είναι.');
       }
-      if (b.dataset.act === 'change') openSetup(true);
+      if (b.dataset.act === 'change') openSetup(!!state.plan.config.mode);
     });
 
 
     /* ---------- Στόχοι ----------
-       Δύο κουτιά: βοήθεια από τον προπονητή (ο πελάτης δηλώνει στόχο και
-       επίπεδο, και τα βλέπει η διαχείριση στο «Στόχοι πελατών») ή δικό του
-       πρόγραμμα. Από εδώ περνάει και η κάρτα του τρέχοντος προγράμματος. */
+       Δύο κάρτες: ο στόχος (ο πελάτης δηλώνει στόχο και επίπεδο, και τα
+       βλέπει η διαχείριση στο «Στόχοι πελατών») και το πρόγραμμα, που
+       δείχνει το τρέχον — του γυμναστή, δικό του, ή τίποτα ακόμα. */
 
     const GOAL_ORDER = ['recomp', 'cut', 'bulk', 'strength', 'endurance',
       'maintain', 'beginner', 'rehab', 'event'];
@@ -10667,10 +10661,13 @@ function __bootWorkout() {
           ? `Έχεις δηλώσει «${p.label}»${lv ? `, επίπεδο ${lv.label}` : ''}. Ο προπονητής το βλέπει και σου φτιάχνει πρόγραμμα.`
           : 'Πες μας τι θέλεις να πετύχεις και σε τι επίπεδο είσαι. Ο προπονητής το βλέπει και σου φτιάχνει πρόγραμμα.';
       }
+      const set = !!(GOALS && GOALS.primary);
       const askBtn = $('#goal-ask-btn');
-      if (askBtn) askBtn.textContent = (GOALS && GOALS.primary) ? 'Άλλαξε τον στόχο σου' : 'Ζήτα βοήθεια από τον Προπονητή';
-      const ownBtn = $('#goal-own-btn');
-      if (ownBtn) ownBtn.textContent = usingCustom() ? 'Άλλαξε το πρόγραμμά σου' : 'Φτιάξε το δικό σου Πρόγραμμα';
+      if (askBtn) {
+        askBtn.textContent = set ? 'Άλλαξε τον στόχο σου' : 'Ζήτα βοήθεια από τον Προπονητή';
+        askBtn.classList.toggle('btn-primary', !set);
+        askBtn.classList.toggle('btn-quiet', set);
+      }
     }
 
     function goalOptionRow(key, label, desc, on, attr) {
@@ -10702,9 +10699,6 @@ function __bootWorkout() {
 
     on('#goal-ask-btn', 'click', openGoalForm);
     on('#goal-form-cancel', 'click', () => { $('#goal-form').hidden = true; });
-    on('#goal-own-btn', 'click', () => {
-      openBuilder(usingCustom() ? draftFromCurrent() : null);
-    });
 
     on('#goal-form-primary', 'click', (e) => {
       const b = e.target.closest('button[data-goal]');
