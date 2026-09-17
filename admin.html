@@ -41,8 +41,10 @@ html, body { margin: 0; background: #fff; }
 [data-theme="dark"] .text-neutral-400 { color: #6E6E6E !important; }
 [data-theme="dark"] .text-neutral-300 { color: #5A5A5A !important; }
 [data-theme="dark"] input,
+[data-theme="dark"] textarea,
 [data-theme="dark"] select { background-color: #0C0C0C; color: #F2F2F2; }
 [data-theme="dark"] option { background-color: #0C0C0C; color: #F2F2F2; }
+[data-theme="dark"] textarea::placeholder,
 [data-theme="dark"] input::placeholder { color: #6E6E6E; }
 [data-theme="dark"] .border-dashed { border-color: #3A3A3A !important; }
 
@@ -1049,6 +1051,7 @@ const TABS = [
   ["hours", "Χωρητικότητα"],
   ["people", "Πελάτες"],
   ["goals", "Στόχοι πελατών"],
+  ["programs", "Προγράμματα"],
   ["access", "Είσοδος, QR & NFC"],
   ["newsletter", "Ενημερώσεις"],
   ["announce", "Ειδοποιήσεις"],
@@ -1221,6 +1224,7 @@ function App() {
           chatOn={chatOn} chatSaving={chatSaving} onToggleChat={toggleChat} />
       )}
       {tab === "goals" && <Goals {...props} />}
+      {tab === "programs" && <Programs {...props} />}
       {tab === "access" && (
         <React.Fragment>
           <Station {...props} />
@@ -4223,6 +4227,518 @@ function Goals({ flash, onAuthFail }) {
 /* ---------- Newsletter ----------
    Μόνο όσοι έδωσαν ρητά τη συγκατάθεσή τους. Το φιλτράρισμα γίνεται
    μέσα στη βάση — όποιος δεν την έδωσε δεν επιστρέφεται καθόλου. */
+/* ============================================================
+   Προγράμματα προπόνησης
+   Ο διαχειριστής φτιάχνει πρόγραμμα για έναν πελάτη. Ο πελάτης το
+   βλέπει στο καρνέ του ως «Το πρόγραμμα του γυμναστή σου» και
+   διαλέγει αν θα το ακολουθήσει.
+
+   Η βιβλιοθήκη ασκήσεων και οι προτεινόμενοι χρόνοι είναι αντίγραφο
+   αυτών στο index.html (LIBRARY, GROUP_REST, GROUP_REPS). Αν αλλάξουν
+   εκεί, άλλαξέ τα και εδώ, ώστε τα id να ταιριάζουν και να συνεχίζει
+   το ιστορικό του πελάτη.
+   ============================================================ */
+const P_GROUP_REST = {
+  "Πόδια": [180, 90], "Πλάτη": [150, 90], "Στήθος": [150, 75], "Ώμοι": [120, 60],
+  "Χέρια": [90, 60], "Γάμπες": [60, 60], "Κορμός": [45, 45], "Άλλο": [90, 60],
+};
+const P_GROUP_REPS = {
+  "Πόδια": ["6-10", "10-15"], "Πλάτη": ["6-10", "10-15"], "Στήθος": ["6-10", "10-15"],
+  "Ώμοι": ["8-12", "12-20"], "Χέρια": ["8-12", "10-15"], "Γάμπες": ["10-15", "10-15"],
+  "Κορμός": ["10-15", "10-15"], "Άλλο": ["8-12", "10-15"],
+};
+const P_LIBRARY = {
+  "Πόδια": [
+    { id: "squat", c: "squat", name: "Squat με μπάρα", s: 2.5 },
+    { id: "x_hack", name: "Hack squat", s: 5 },
+    { id: "legpress", c: "legpress", name: "Leg press", s: 5 },
+    { id: "rdl", c: "rdl", name: "Romanian deadlift", s: 2.5 },
+    { id: "split", c: "split", name: "Bulgarian split squat", s: 2 },
+    { id: "legcurl", c: "legcurl", name: "Κάμψεις δικεφάλων μηρού", iso: true, s: 2.5 },
+    { id: "hipthrust", c: "hipthrust", name: "Hip thrust", s: 5 },
+    { id: "legext", c: "legext", name: "Εκτάσεις τετρακεφάλων", iso: true, s: 2.5 },
+    { id: "x_lunge", name: "Προβολές (lunges)", s: 2 },
+    { id: "gobsquat", c: "gobsquat", name: "Goblet squat", s: 2.5 },
+    { id: "bridge", c: "bridge", name: "Γέφυρα γλουτών στο πάτωμα", iso: true, bw: true, s: 1 },
+    { id: "bwsquat", c: "bwsquat", name: "Καθίσματα με το σώμα σου", bw: true, s: 1 },
+  ],
+  "Πλάτη": [
+    { id: "pullup", c: "pullup", name: "Έλξεις (pull-ups)", bw: true, s: 1 },
+    { id: "x_bbrow", name: "Κωπηλατική με μπάρα", s: 2.5 },
+    { id: "pulldown", c: "pulldown", name: "Έλξεις τροχαλίας (lat pulldown)", s: 2.5 },
+    { id: "row", c: "row", name: "Κωπηλατική τροχαλίας καθιστός", s: 2.5 },
+    { id: "dbrow", c: "dbrow", name: "Κωπηλατική με αλτήρα", s: 2.5 },
+    { id: "x_tbar", name: "T-bar row", s: 2.5 },
+    { id: "x_machrow", name: "Κωπηλατική μηχανής", s: 5 },
+    { id: "x_asspull", name: "Έλξεις με βοήθεια (assisted)", s: 5 },
+    { id: "pullover", c: "pullover", name: "Straight-arm pulldown", iso: true, s: 2.5 },
+    { id: "invrow", c: "invrow", name: "Ανάποδες κωπηλατικές (inverted rows)", bw: true, s: 1 },
+  ],
+  "Στήθος": [
+    { id: "bench", c: "bench", name: "Πιέσεις στήθους με μπάρα", s: 2.5 },
+    { id: "dbpress", c: "dbpress", name: "Πιέσεις στήθους με αλτήρες", s: 2 },
+    { id: "incline", c: "incline", name: "Πιέσεις στήθους με κλίση", s: 2.5 },
+    { id: "x_machpress", name: "Πιέσεις στήθους μηχανής", s: 5 },
+    { id: "x_chestdip", name: "Βυθίσεις για στήθος", bw: true, s: 1 },
+    { id: "x_cablefly", name: "Σταυροί τροχαλίας", iso: true, s: 2.5 },
+    { id: "fly", c: "fly", name: "Butterfly (pec deck)", iso: true, s: 2.5 },
+    { id: "pushup", c: "pushup", name: "Push-ups", bw: true, s: 1 },
+  ],
+  "Ώμοι": [
+    { id: "ohp", c: "ohp", name: "Πιέσεις ώμων με μπάρα", s: 2.5 },
+    { id: "dbohp", c: "dbohp", name: "Πιέσεις ώμων με αλτήρες", s: 2 },
+    { id: "x_cablelat", name: "Πλάγιες άρσεις τροχαλίας", iso: true, s: 1 },
+    { id: "lateral", c: "lateral", name: "Πλάγιες άρσεις με αλτήρες", iso: true, s: 1 },
+    { id: "x_machohp", name: "Πιέσεις ώμων μηχανής", s: 5 },
+    { id: "facepull", c: "facepull", name: "Face pulls", iso: true, s: 1 },
+    { id: "reverfly", c: "reverfly", name: "Ανοίγματα οπίσθιων δελτοειδών", iso: true, s: 1 },
+    { id: "x_arnold", name: "Arnold press", s: 2 },
+    { id: "x_machlat", name: "Πλάγιες άρσεις μηχανής", iso: true, s: 2.5 },
+    { id: "pike", c: "pike", name: "Pike push-ups", bw: true, s: 1 },
+  ],
+  "Χέρια": [
+    { id: "dips", c: "dips", name: "Βυθίσεις (dips)", bw: true, s: 1 },
+    { id: "x_cgbench", name: "Κλειστές πιέσεις (close-grip)", s: 2.5 },
+    { id: "x_ohext", name: "Εκτάσεις τρικεφάλων πάνω από το κεφάλι", iso: true, s: 1 },
+    { id: "x_bbcurl", name: "Δικέφαλα με μπάρα", iso: true, s: 1 },
+    { id: "x_inccurl", name: "Δικέφαλα σε πάγκο με κλίση", iso: true, s: 1 },
+    { id: "triceps", c: "triceps", name: "Τρικέφαλα τροχαλίας", iso: true, s: 1 },
+    { id: "curl", c: "curl", name: "Δικέφαλα με αλτήρες", iso: true, s: 1 },
+    { id: "hammer", c: "hammer", name: "Σφυριά (hammer curls)", iso: true, s: 1 },
+    { id: "x_cablecurl", name: "Δικέφαλα τροχαλίας", iso: true, s: 1 },
+  ],
+  "Γάμπες": [
+    { id: "x_standcalf", name: "Γάμπες όρθιος σε μηχάνημα", iso: true, s: 5 },
+    { id: "x_lpcalf", name: "Γάμπες στο leg press", iso: true, s: 5 },
+    { id: "calves", c: "calves", name: "Γάμπες με αλτήρες", iso: true, s: 2.5 },
+    { id: "x_seatcalf", name: "Γάμπες καθιστός", iso: true, s: 2.5 },
+    { id: "calvesbw", c: "calvesbw", name: "Γάμπες με το σώμα σου", iso: true, bw: true, s: 1 },
+  ],
+  "Κορμός": [
+    { id: "x_hangraise", name: "Ανυψώσεις ποδιών σε κρέμαση", iso: true, bw: true, s: 1 },
+    { id: "x_cablecrunch", name: "Κοιλιακοί τροχαλίας (cable crunch)", iso: true, s: 2.5 },
+    { id: "x_abwheel", name: "Ab wheel", iso: true, bw: true, s: 1 },
+    { id: "core", c: "core", name: "Plank", iso: true, bw: true, s: 1 },
+    { id: "pallof", c: "pallof", name: "Pallof press", iso: true, s: 1 },
+    { id: "birddog", c: "birddog", name: "Dead bug / bird dog", iso: true, bw: true, s: 1 },
+  ],
+};
+const P_GROUPS = Object.keys(P_LIBRARY).concat("Άλλο");
+const P_LIB = {};
+Object.keys(P_LIBRARY).forEach((g) => P_LIBRARY[g].forEach((x) => { P_LIB[x.id] = { ...x, group: g }; }));
+const P_KINDS = [["lift", "Βάρη"], ["cardio", "Καρντιό"], ["walk", "Περπάτημα"]];
+
+const pUid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID()
+  : "x" + Date.now().toString(36) + Math.random().toString(36).slice(2));
+let pKey = 0;
+const nextKey = () => "k" + (++pKey);
+
+function pDefaults(group, lib) {
+  const k = lib && lib.iso ? 1 : 0;
+  return {
+    rest: (P_GROUP_REST[group] || P_GROUP_REST["Άλλο"])[k],
+    reps: (P_GROUP_REPS[group] || P_GROUP_REPS["Άλλο"])[k],
+    rir: lib && lib.bw ? "" : (k ? "0-2" : "1-2"),
+  };
+}
+function pReps(v) {
+  const m = String(v || "").match(/(\d+)\s*(?:[-–—\/]\s*(\d+))?/);
+  if (!m) return [8, 12];
+  const a = Math.min(100, Math.max(1, +m[1])), b = m[2] ? Math.min(100, Math.max(1, +m[2])) : a;
+  return a <= b ? [a, b] : [b, a];
+}
+function pRir(v) {
+  const m = String(v || "").match(/(\d)\s*(?:[-–—\/]\s*(\d))?/);
+  if (!m) return "—";
+  return m[2] && m[2] !== m[1] ? `${Math.min(m[1], m[2])}–${Math.max(m[1], m[2])}` : m[1];
+}
+const pBlankEx = () => ({ key: nextKey(), group: "", libId: "", name: "", sets: 3, reps: "", rest: "", rir: "", note: "" });
+const pBlankDay = (i) => ({ key: nextKey(), name: `Μέρα ${i + 1}`, kind: "lift", exercises: [pBlankEx()] });
+
+function pFirstFree(group, day, selfKey) {
+  const taken = new Set(day.exercises.filter((x) => x.key !== selfKey).map((x) => x.libId));
+  const list = P_LIBRARY[group] || [];
+  const pick = list.find((x) => !taken.has(x.id)) || list[0];
+  return pick ? pick.id : "";
+}
+
+/* Αποθηκευμένο → φόρμα */
+function pFromSaved(days) {
+  return (days || []).map((d) => ({
+    key: nextKey(),
+    name: d.name || "",
+    kind: d.kind === "cardio" || d.kind === "walk" ? d.kind : "lift",
+    exercises: (d.exercises || []).map((e) => ({
+      key: nextKey(),
+      id: e.id,
+      group: P_GROUPS.includes(e.group) ? e.group : "Άλλο",
+      libId: e.libId && P_LIB[e.libId] ? e.libId : "",
+      name: e.name || "",
+      sets: e.sets || 3,
+      reps: e.repMin === e.repMax ? String(e.repMin) : `${e.repMin}-${e.repMax}`,
+      rest: e.rest || "",
+      rir: e.rir && e.rir !== "—" ? e.rir : "",
+      note: e.note || "",
+      step: e.step, bodyweight: e.bodyweight,
+      touched: true,
+    })),
+  }));
+}
+
+/* Φόρμα → αποθηκευμένο. Επιστρέφει { days } ή { error }. */
+function pToSaved(form) {
+  const days = [];
+  for (let i = 0; i < form.length; i++) {
+    const d = form[i];
+    const name = (d.name || "").trim() || `Μέρα ${i + 1}`;
+    if (d.kind !== "lift") { days.push({ name, kind: d.kind }); continue; }
+    const used = new Set();
+    const exercises = [];
+    for (const e of d.exercises) {
+      if (!e.group) continue;
+      const lib = P_LIB[e.libId] || null;
+      const exName = lib ? lib.name : (e.name || "").trim();
+      if (!exName) continue;
+      const def = pDefaults(e.group, lib);
+      const [repMin, repMax] = pReps(e.reps || def.reps);
+      let id = e.id || (lib ? lib.id : pUid());
+      if (used.has(id)) id = pUid();
+      used.add(id);
+      exercises.push({
+        id, libId: lib ? lib.id : null, catalogId: lib ? (lib.c || null) : null,
+        name: exName.slice(0, 60), group: e.group,
+        sets: Math.min(12, Math.max(1, Math.round(+e.sets || 3))),
+        repMin, repMax,
+        rest: Math.min(600, Math.max(15, Math.round(+e.rest || def.rest))),
+        rir: pRir(e.rir),
+        step: +e.step || (lib ? lib.s : 2.5),
+        bodyweight: e.bodyweight != null ? !!e.bodyweight : !!(lib && lib.bw),
+        note: (e.note || "").trim().slice(0, 300),
+      });
+    }
+    if (!exercises.length) return { error: `Η μέρα «${name}» δεν έχει καμία άσκηση.` };
+    days.push({ name, kind: "lift", exercises });
+  }
+  if (!days.some((d) => d.kind === "lift")) return { error: "Χρειάζεται τουλάχιστον μία μέρα με βάρη." };
+  return { days };
+}
+
+const P_INPUT = "f-text h-11 w-full border-2 border-black bg-white px-3 text-[15px] outline-none focus:border-neutral-500";
+
+function PExercise({ ex, index, onChange, onRemove, onGroup, onLib }) {
+  const list = P_LIBRARY[ex.group] || [];
+  const other = ex.group && !ex.libId;
+  const [noteOpen, setNoteOpen] = useState(!!ex.note);
+  return (
+    <div className="border-t border-neutral-300 py-3">
+      <div className="flex items-center gap-2">
+        <span className="f-mono w-6 shrink-0 text-[12px] text-neutral-400">{index + 1}</span>
+        <select value={ex.group} onChange={(e) => onGroup(e.target.value)} className={P_INPUT + " font-semibold"}
+          aria-label="Μυϊκή ομάδα">
+          <option value="">Διάλεξε ομάδα</option>
+          {P_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <button onClick={onRemove} aria-label="Αφαίρεσε την άσκηση"
+          className="f-display h-11 w-11 shrink-0 border-2 border-black text-[18px] font-bold hover:bg-black hover:text-white">×</button>
+      </div>
+      {ex.group && (
+        <div className="mt-2 space-y-2 pl-8">
+          <select value={ex.libId} onChange={(e) => onLib(e.target.value)} className={P_INPUT} aria-label="Άσκηση">
+            {list.map((x, k) => <option key={x.id} value={x.id}>{k + 1}. {x.name}</option>)}
+            <option value="">Άλλη άσκηση…</option>
+          </select>
+          {other && (
+            <input value={ex.name} maxLength={60} placeholder="Όνομα άσκησης"
+              onChange={(e) => onChange({ name: e.target.value })} className={P_INPUT} />
+          )}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              ["sets", "Σετ", "numeric"],
+              ["reps", "Επαναλ.", "text"],
+              ["rest", "Ξεκ. (δ)", "numeric"],
+              ["rir", "RIR", "text"],
+            ].map(([k, label, mode]) => (
+              <label key={k} className="block">
+                <span className="f-text block text-[11px] uppercase tracking-wide text-neutral-500">{label}</span>
+                <input value={ex[k]} inputMode="numeric" type={mode === "numeric" ? "number" : "text"}
+                  placeholder={k === "rir" ? "—" : ""}
+                  onChange={(e) => onChange({ [k]: e.target.value, touched: true })}
+                  className={P_INPUT + " f-mono text-center"} />
+              </label>
+            ))}
+          </div>
+          {noteOpen ? (
+            <label className="block">
+              <span className="f-text block text-[11px] uppercase tracking-wide text-neutral-500">Περιγραφή</span>
+              <textarea value={ex.note} maxLength={300} rows={2}
+                placeholder="π.χ. αργά στην κατάβαση, λαβή στο πλάτος των ώμων"
+                onChange={(e) => onChange({ note: e.target.value })}
+                className="f-text w-full border-2 border-black bg-white px-3 py-2 text-[15px] outline-none" />
+            </label>
+          ) : (
+            <button onClick={() => setNoteOpen(true)}
+              className="f-text text-[13px] text-neutral-500 underline hover:text-black">+ Περιγραφή</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
+  const [form, setForm] = useState(null);
+  const [note, setNote] = useState("");
+  const [savedAt, setSavedAt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setForm(null); setErr(""); setDirty(false);
+    (async () => {
+      const { data, error } = await rpc("admin_get_program", { p_client_id: client.id });
+      if (!alive) return;
+      if (error === "AUTH") { onAuthFail(); return; }
+      if (error) { flash("Δεν φόρτωσε το πρόγραμμα"); return; }
+      if (data && Array.isArray(data.days)) {
+        setForm(pFromSaved(data.days));
+        setNote(data.note || "");
+        setSavedAt(data.updated_at || null);
+      } else {
+        setForm([pBlankDay(0)]);
+        setNote("");
+        setSavedAt(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [client.id, flash, onAuthFail]);
+
+  const edit = (fn) => { setForm((f) => fn(f.map((d) => ({ ...d, exercises: d.exercises.slice() })))); setDirty(true); };
+  const setDay = (di, patch) => edit((f) => { f[di] = { ...f[di], ...patch }; return f; });
+  const setEx = (di, ei, patch) => edit((f) => { f[di].exercises[ei] = { ...f[di].exercises[ei], ...patch }; return f; });
+
+  const pickGroup = (di, ei, group) => edit((f) => {
+    const d = f[di]; const ex = d.exercises[ei];
+    const libId = group ? pFirstFree(group, d, ex.key) : "";
+    const def = pDefaults(group, P_LIB[libId]);
+    d.exercises[ei] = { key: ex.key, group, libId, name: "", sets: ex.sets || 3, note: ex.note,
+      reps: def.reps, rest: def.rest, rir: def.rir };
+    return f;
+  });
+  const pickLib = (di, ei, libId) => edit((f) => {
+    const ex = f[di].exercises[ei];
+    const def = pDefaults(ex.group, P_LIB[libId]);
+    f[di].exercises[ei] = { key: ex.key, group: ex.group, libId, name: "", sets: ex.sets || 3, note: ex.note,
+      reps: def.reps, rest: def.rest, rir: def.rir };
+    return f;
+  });
+  const addEx = (di) => edit((f) => {
+    const d = f[di];
+    const prev = d.exercises[d.exercises.length - 1];
+    const ex = pBlankEx();
+    if (prev && prev.group) {
+      ex.group = prev.group;
+      ex.libId = pFirstFree(prev.group, d, ex.key);
+      Object.assign(ex, pDefaults(ex.group, P_LIB[ex.libId]));
+    }
+    d.exercises.push(ex);
+    return f;
+  });
+  const removeEx = (di, ei) => edit((f) => { f[di].exercises.splice(ei, 1); return f; });
+  const moveDay = (di, dir) => edit((f) => {
+    const j = di + dir;
+    if (j < 0 || j >= f.length) return f;
+    [f[di], f[j]] = [f[j], f[di]];
+    return f;
+  });
+  const addDay = () => edit((f) => (f.length >= 7 ? f : f.concat(pBlankDay(f.length))));
+  const removeDay = (di) => edit((f) => (f.length > 1 ? f.filter((_, i) => i !== di) : f));
+
+  const save = async () => {
+    setErr("");
+    const out = pToSaved(form);
+    if (out.error) { setErr(out.error); return; }
+    setBusy(true);
+    const { data, error } = await rpc("admin_save_program", {
+      p_client_id: client.id, p_days: out.days, p_note: note.trim(),
+    });
+    setBusy(false);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !data.ok) { setErr((data && data.error) || "Η αποθήκευση απέτυχε"); return; }
+    setSavedAt(data.updated_at);
+    setDirty(false);
+    /* Κρατάμε τα id που μόλις δόθηκαν, για να μην αλλάξουν στην επόμενη αποθήκευση. */
+    setForm(pFromSaved(out.days));
+    flash("Το πρόγραμμα αποθηκεύτηκε");
+    onSaved();
+  };
+
+  const remove = async () => {
+    if (!window.confirm(`Να σβηστεί το πρόγραμμα του/της ${client.name}; Ο πελάτης θα γυρίσει στην επιλογή προγράμματος.`)) return;
+    setBusy(true);
+    const { error } = await rpc("admin_delete_program", { p_client_id: client.id });
+    setBusy(false);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) { flash("Δεν σβήστηκε"); return; }
+    flash("Το πρόγραμμα σβήστηκε");
+    onSaved();
+    onClose();
+  };
+
+  const close = () => {
+    if (dirty && !window.confirm("Έχεις αλλαγές που δεν αποθηκεύτηκαν. Να κλείσει;")) return;
+    onClose();
+  };
+
+  if (!form) return <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση προγράμματος…</div>;
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-black pb-3">
+        <div className="min-w-0">
+          <div className="f-text text-[12px] uppercase tracking-wide text-neutral-500">Πρόγραμμα για</div>
+          <div className="f-display truncate text-[22px] font-extrabold uppercase">{client.name}</div>
+          <div className="f-mono mt-0.5 text-[11px] text-neutral-500">
+            {savedAt ? `Αποθηκεύτηκε ${fmtChatTime(savedAt)}` : "Δεν έχει αποθηκευτεί ακόμα"}
+            {dirty && " · έχεις αλλαγές"}
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={close}>Κλείσιμο</Button>
+      </div>
+
+      <label className="mt-4 block">
+        <span className="f-text block text-[12px] uppercase tracking-wide text-neutral-500">Σημείωμα για τον πελάτη (προαιρετικό)</span>
+        <textarea value={note} maxLength={1000} rows={2}
+          onChange={(e) => { setNote(e.target.value); setDirty(true); }}
+          placeholder="π.χ. Την πρώτη εβδομάδα κράτα τα κιλά χαμηλά."
+          className="f-text mt-1 w-full border-2 border-black bg-white px-3 py-2 text-[15px] outline-none" />
+      </label>
+
+      <div className="mt-5 space-y-5">
+        {form.map((d, di) => (
+          <section key={d.key} className="border-2 border-black p-3 sm:p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="f-display text-[18px] font-extrabold">{di + 1}.</span>
+              <input value={d.name} maxLength={40} onChange={(e) => setDay(di, { name: e.target.value })}
+                className={P_INPUT + " min-w-[140px] flex-1 font-semibold"} aria-label="Όνομα μέρας" />
+              <select value={d.kind} onChange={(e) => {
+                  const kind = e.target.value;
+                  setDay(di, { kind, exercises: kind === "lift" && !d.exercises.length ? [pBlankEx()] : d.exercises });
+                }}
+                className={P_INPUT + " w-auto"} aria-label="Είδος μέρας">
+                {P_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+              <div className="flex gap-1">
+                <Button variant="outline" size="sm" onClick={() => moveDay(di, -1)} disabled={di === 0}>↑</Button>
+                <Button variant="outline" size="sm" onClick={() => moveDay(di, 1)} disabled={di === form.length - 1}>↓</Button>
+              </div>
+            </div>
+
+            {d.kind !== "lift" ? (
+              <p className="f-text mt-3 text-[13px] text-neutral-500">
+                Μέρα χωρίς σετ: ο πελάτης καταγράφει μόνο διάρκεια και απόσταση.
+              </p>
+            ) : (
+              <div className="mt-3">
+                {d.exercises.map((ex, ei) => (
+                  <PExercise key={ex.key} ex={ex} index={ei}
+                    onChange={(patch) => setEx(di, ei, patch)}
+                    onRemove={() => removeEx(di, ei)}
+                    onGroup={(g) => pickGroup(di, ei, g)}
+                    onLib={(l) => pickLib(di, ei, l)} />
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-300 pt-3">
+              {d.kind === "lift"
+                ? <Button variant="outline" size="sm" onClick={() => addEx(di)}>+ Άσκηση</Button>
+                : <span />}
+              {form.length > 1 && (
+                <Button variant="ghost" size="sm" onClick={() => removeDay(di)}>Αφαίρεσε τη μέρα</Button>
+              )}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {form.length < 7 && (
+        <button onClick={addDay}
+          className="f-display mt-4 w-full border-2 border-dashed border-neutral-300 py-3 text-[14px] font-bold uppercase tracking-wide text-neutral-500 hover:border-black hover:text-black">
+          + Πρόσθεσε μέρα
+        </button>
+      )}
+
+      {err && <div className="f-text mt-4 border-2 border-red-600 px-3 py-2 text-[14px] text-red-700">{err}</div>}
+
+      <div className="sticky bottom-0 z-10 mt-6 flex flex-wrap gap-2 border-t-2 border-black bg-white py-3">
+        <Button onClick={save} disabled={busy} className="flex-1">{busy ? "Αποθήκευση…" : "Αποθήκευση"}</Button>
+        {savedAt && <Button variant="danger" onClick={remove} disabled={busy}>Διαγραφή</Button>}
+      </div>
+    </div>
+  );
+}
+
+function Programs({ flash, onAuthFail }) {
+  const [list, setList] = useState(null);
+  const [client, setClient] = useState(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await rpc("admin_programs", {});
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) { flash("Δεν φόρτωσαν τα προγράμματα"); setList([]); return; }
+    setList(data || []);
+  }, [flash, onAuthFail]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="px-5 sm:px-6">
+      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Προγράμματα προπόνησης</h2>
+      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+        Φτιάξε πρόγραμμα για έναν πελάτη. Θα το δει στο καρνέ του ως «Το πρόγραμμα
+        του γυμναστή σου» και θα διαλέξει αν θα το ακολουθήσει. Κάθε αλλαγή που
+        αποθηκεύεις του φτάνει την επόμενη φορά που θα ανοίξει την εφαρμογή.
+      </p>
+
+      {client ? (
+        <ProgramEditor client={client} flash={flash} onAuthFail={onAuthFail}
+          onClose={() => setClient(null)} onSaved={load} />
+      ) : (
+        <>
+          <h3 className="f-display mt-7 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Νέο ή υπάρχον πρόγραμμα</h3>
+          <div className="max-w-md">
+            <OneClientPicker clientId={null} clientName=""
+              onPick={(c) => setClient({ id: c.id, name: c.name })} onClear={() => {}} onAuthFail={onAuthFail} />
+          </div>
+
+          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πελάτες με πρόγραμμα</h3>
+          {list === null ? (
+            <div className="f-text py-6 text-[14px] text-neutral-400">Φόρτωση…</div>
+          ) : list.length === 0 ? (
+            <div className="f-text mt-3 border-2 border-dashed border-neutral-300 py-10 text-center text-[15px] text-neutral-500">
+              Δεν έχεις φτιάξει πρόγραμμα για κανέναν ακόμα.
+            </div>
+          ) : (
+            <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
+              {list.map((p) => (
+                <button key={p.client_id} onClick={() => setClient({ id: p.client_id, name: p.name })}
+                  className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-neutral-50">
+                  <span className="client-name f-text truncate text-[15px]">{p.name}</span>
+                  <span className="f-mono shrink-0 text-[12px] text-neutral-500">
+                    {p.days} {p.days === 1 ? "μέρα" : "μέρες"} · {fmtChatTime(p.updated_at)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Newsletter({ flash, onAuthFail }) {
   const [rows, setRows] = useState(null);
 
