@@ -1745,6 +1745,146 @@ button.history-item:active { background: var(--accent-soft); }
   body.report-open > *:not(#report-sheet) { display: none !important; }
   body.report-open #report-sheet { position: static; overflow: visible; background: #fff; }
 }
+
+/* ---------- Επιλογή και σύνταξη προγράμματος ---------- */
+
+.section-head-sub { margin-top: 28px; }
+
+.setup {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--paper);
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top) + 28px) 0 calc(env(safe-area-inset-bottom) + 110px);
+}
+
+.setup-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 34px;
+  line-height: 1.05;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+.setup-lead { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 0 0 22px; max-width: 46ch; }
+
+.choice {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--dim);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px;
+  margin-bottom: 14px;
+  display: grid;
+  gap: 10px;
+}
+.choice[data-kind="auto"] { border-left-color: var(--accent); }
+.choice h3 { font-family: var(--display); font-size: 21px; margin: 0; color: var(--ink); }
+.choice p { margin: 0; color: #a9a9a9; font-size: 14px; line-height: 1.5; }
+
+.file-btn { display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.file-btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+
+.link-back[hidden] { display: none; }
+.link-back {
+  display: block;
+  margin: 8px auto 0;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  text-decoration: underline;
+  min-height: var(--tap);
+}
+
+.bday {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.bday-head { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.bday-num {
+  font-family: var(--display);
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 34px;
+  font-size: 15px;
+}
+.bday input, .bday select {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.bday input:focus, .bday select:focus { outline: none; border-color: var(--accent); }
+.bday-head input { flex: 1; font-weight: 600; }
+.bday-head select { flex: 0 0 auto; }
+
+.bex {
+  display: grid;
+  grid-template-columns: 1fr 52px 76px 36px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule);
+}
+.bex-labels { border-top: 0; padding: 0 0 2px; font-size: 11.5px; color: var(--muted); }
+.bex input { width: 100%; }
+.bex .bex-name[data-known="true"] { border-color: var(--accent-line); }
+.icon-x {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+.icon-x:hover { color: var(--red); border-color: var(--red); }
+.bday-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.bday-foot button {
+  background: none; border: 0; min-height: 36px; font-size: 13.5px; padding: 0;
+}
+.bday-foot .add { color: var(--accent); font-weight: 600; }
+.bday-foot .del { color: var(--muted); }
+.bday-move { font-size: 13.5px; color: var(--muted); margin: 0; }
+
+.builder-bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
+  background: rgba(10, 10, 10, 0.96);
+  border-top: 1px solid #1a1a1a;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.builder-bar .btn-quiet { flex: 0 0 auto; }
+
+.plan-mode-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.plan-mode-row .btn { flex: 1 1 140px; }
+
+.busy::after {
+  content: '';
+  display: inline-block;
+  width: 12px; height: 12px;
+  margin-left: 8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .busy::after { animation: none; } }
 </style>
 <style>
 /* ── Ο διακόπτης ανάμεσα στις δύο εφαρμογές ──────────────────────
@@ -4970,10 +5110,6 @@ loadAppSettings().then(() => {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 3v8a3 3 0 006 0V3M9 11v10M18 3c-1.5 2-2 4-2 6s.5 3 2 3 2-1 2-3-.5-4-2-6zM18 12v9"/></svg>
       Διατροφή
     </button>
-    <button class="tab" role="tab" data-view="settings" aria-selected="false">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
-      Ρυθμίσεις
-    </button>
   </div>
 </nav>
 
@@ -5063,6 +5199,43 @@ loadAppSettings().then(() => {
           <div id="history-list"></div>
         </div>
       </div>
+
+    <!-- ΤΟ ΠΡΟΓΡΑΜΜΑ ΣΟΥ — ήταν στις Ρυθμίσεις -->
+    <div class="section-head section-head-sub">
+      <h2>Το πρόγραμμά σου</h2>
+      <p id="storage-mode"></p>
+    </div>
+
+    <div class="panel" id="plan-mode-panel"></div>
+
+    <div class="panel" id="goal-panel" hidden></div>
+
+    <div class="panel" id="days-panel">
+      <h3>Μέρες την εβδομάδα</h3>
+      <p class="hint">Πόσες μέρες θέλεις να γυμνάζεσαι μέσα στην εβδομάδα;</p>
+      <div class="day-pick" id="cfg-days"></div>
+    </div>
+
+    <div class="panel" id="config-panel">
+      <h3>Η εβδομάδα σου</h3>
+      <p class="hint" id="cfg-total"></p>
+      <div id="cfg-mix"></div>
+      <div id="cfg-status"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Τα δεδομένα σου</h3>
+      <div class="app-note" id="export-note" hidden>
+        <strong>Άνοιξε τη σελίδα σε browser</strong>
+        <span>Το PDF και το Excel δεν κατεβαίνουν όταν η εφαρμογή είναι ανοιχτή από την αρχική οθόνη. Άνοιξε το Safari ή το Chrome, μπες στη διεύθυνση από κάτω και κάνε από εκεί την εξαγωγή.</span>
+        <code id="export-url"></code>
+        <button type="button" class="btn btn-quiet btn-block" id="export-copy">Αντιγραφή διεύθυνσης</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="export-btn">PDF</button>
+        <button class="btn btn-quiet" id="excel-btn">Excel</button>
+      </div>
+      <div id="data-status"></div>
     </div>
   </main>
 
@@ -5116,44 +5289,49 @@ loadAppSettings().then(() => {
     </div>
   </main>
 
-  <!-- ΡΥΘΜΙΣΕΙΣ -->
-  <main id="view-settings" role="tabpanel" hidden>
-    <div class="section-head">
-      <h2>Ρυθμίσεις</h2>
-      <p id="storage-mode"></p>
-    </div>
 
-    <div class="panel" id="goal-panel" hidden></div>
+</div>
 
-    <div class="panel">
-      <h3>Μέρες την εβδομάδα</h3>
-      <p class="hint">Πόσες μέρες θέλεις να γυμνάζεσαι μέσα στην εβδομάδα;</p>
-      <div class="day-pick" id="cfg-days"></div>
-    </div>
+<!-- ΕΠΙΛΟΓΗ ΠΡΟΓΡΑΜΜΑΤΟΣ: βγαίνει μόνο όσο δεν έχει διαλέξει ο χρήστης,
+     ή όταν πατήσει «Άλλαξε πρόγραμμα» στην Πρόοδο. -->
+<div class="setup" id="plan-setup" hidden>
+  <div class="shell">
+    <section id="plan-choice" aria-labelledby="choice-title">
+      <h2 class="setup-title" id="choice-title">Πώς θα προπονηθείς;</h2>
+      <p class="setup-lead">Διάλεξε από πού έρχεται το πρόγραμμά σου. Το αλλάζεις όποτε θέλεις από την Πρόοδο.</p>
 
-    <div class="panel" id="config-panel">
-      <h3>Η εβδομάδα σου</h3>
-      <p class="hint" id="cfg-total"></p>
-      <div id="cfg-mix"></div>
-      <div id="cfg-status"></div>
-    </div>
-
-    <div class="panel">
-      <h3>Τα δεδομένα σου</h3>
-      <div class="app-note" id="export-note" hidden>
-        <strong>Άνοιξε τη σελίδα σε browser</strong>
-        <span>Το PDF και το Excel δεν κατεβαίνουν όταν η εφαρμογή είναι ανοιχτή από την αρχική οθόνη. Άνοιξε το Safari ή το Chrome, μπες στη διεύθυνση από κάτω και κάνε από εκεί την εξαγωγή.</span>
-        <code id="export-url"></code>
-        <button type="button" class="btn btn-quiet btn-block" id="export-copy">Αντιγραφή διεύθυνσης</button>
+      <div class="choice" data-kind="auto">
+        <h3>Το πρόγραμμα της εφαρμογής</h3>
+        <p id="choice-auto-text">Στήνεται από τον στόχο που έχεις δηλώσει στις κρατήσεις.</p>
+        <button type="button" class="btn btn-primary btn-block" id="choice-auto">Ξεκίνα με αυτό</button>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="export-btn">PDF</button>
-        <button class="btn btn-quiet" id="excel-btn">Excel</button>
-      </div>
-      <div id="data-status"></div>
-    </div>
-  </main>
 
+      <div class="choice" data-kind="custom">
+        <h3>Το δικό μου πρόγραμμα</h3>
+        <p>Ανέβασε το πρόγραμμα του γυμναστή σου (PDF, Word, Excel, φωτογραφία) ή γράψ' το μόνος σου.</p>
+        <label class="btn btn-primary btn-block file-btn" id="choice-upload-label">
+          <input type="file" id="choice-upload" class="sr-only">
+          Ανέβασε αρχείο
+        </label>
+        <button type="button" class="btn btn-quiet btn-block" id="choice-manual">Γράψ' το μόνος μου</button>
+        <div id="upload-status"></div>
+      </div>
+
+      <button type="button" class="link-back" id="choice-cancel" hidden>Άκυρο, κράτα το τωρινό</button>
+    </section>
+
+    <section id="plan-builder" hidden aria-labelledby="builder-title">
+      <h2 class="setup-title" id="builder-title">Το πρόγραμμά σου</h2>
+      <p class="setup-lead" id="builder-lead">Μία κάρτα για κάθε μέρα προπόνησης, με τη σειρά που τις κάνεις.</p>
+      <div id="builder-days"></div>
+      <button type="button" class="add-exercise" id="builder-add-day">+ Πρόσθεσε μέρα</button>
+      <div id="builder-status"></div>
+      <div class="builder-bar">
+        <button type="button" class="btn btn-quiet" id="builder-back">Πίσω</button>
+        <button type="button" class="btn btn-primary" id="builder-save">Αποθήκευση</button>
+      </div>
+    </section>
+  </div>
 </div>
 
 <div class="timer" id="timer" hidden>
@@ -6296,7 +6474,7 @@ function __bootWorkout() {
       };
     }
 
-    return { CATALOG, ALIASES, SESSION_TYPES, LIFT_ORDER, MOVE_ORDER, MIX_ORDER, MAX_LIFT_DAYS, normalizeMix, mixTotal, liftTotal, mixSummary, DAY_KEYS, WEEKLY_VOLUME, weeklyVolumeFor, GROUPS, ALTERNATIVES, NUTRITION, GUIDE, PRESETS, LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, levelPreset, EMPHASIS_LIST, GOAL_LABELS, GOAL_MAP, PRIMARY_PRESET, configFromGoals, autoMix, defaultConfig, buildProgram };
+    return { CATALOG, MOVE_GUIDE, ALIASES, SESSION_TYPES, LIFT_ORDER, MOVE_ORDER, MIX_ORDER, MAX_LIFT_DAYS, normalizeMix, mixTotal, liftTotal, mixSummary, DAY_KEYS, WEEKLY_VOLUME, weeklyVolumeFor, GROUPS, ALTERNATIVES, NUTRITION, GUIDE, PRESETS, LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, levelPreset, EMPHASIS_LIST, GOAL_LABELS, GOAL_MAP, PRIMARY_PRESET, configFromGoals, autoMix, defaultConfig, buildProgram };
   })();
 
 
@@ -7030,7 +7208,7 @@ function __bootWorkout() {
       };
     }
 
-    return { CLIENT_URL, readClientSession, clientName, fetchBrand, fetchGoals };
+    return { CLIENT_URL, readClientSession, clientName, fetchBrand, fetchGoals, SUPABASE_URL, SUPABASE_ANON_KEY };
   })();
 
 
@@ -7039,7 +7217,7 @@ function __bootWorkout() {
     'use strict';
 
     const {
-      buildProgram, defaultConfig,
+      buildProgram, defaultConfig, CATALOG, MOVE_GUIDE,
       PRESETS, LEVELS, LEVEL_ORDER, DEFAULT_LEVEL, levelPreset, EMPHASIS_LIST, ALIASES,
       WEEKLY_VOLUME, weeklyVolumeFor, NUTRITION, ALTERNATIVES, GROUPS,
       SESSION_TYPES, LIFT_ORDER, MOVE_ORDER, MIX_ORDER, MAX_LIFT_DAYS,
@@ -7047,7 +7225,9 @@ function __bootWorkout() {
       GOAL_LABELS, configFromGoals, autoMix
     } = __data;
     const { lineChart, barRow } = __charts;
-    const { fetchBrand, fetchGoals, CLIENT_URL } = __link;
+    const { fetchBrand, fetchGoals, CLIENT_URL, readClientSession } = __link;
+    const FN_URL = __link.SUPABASE_URL + '/functions/v1/parse-program';
+    const FN_KEY = __link.SUPABASE_ANON_KEY;
 
     /* Το πρόγραμμα φτιάχνεται στην εκκίνηση από τις ρυθμίσεις και
        ξαναφτιάχνεται όποτε αλλάξουν. Μέχρι τότε είναι άδειο. */
@@ -7137,6 +7317,8 @@ function __bootWorkout() {
             if (Array.isArray(list)) plan.extras[d] = list.filter((x) => x && x.id);
           });
         }
+        if (raw.custom && Array.isArray(raw.custom.days)) plan.custom = raw.custom;
+        if (raw.autoTweaks && typeof raw.autoTweaks === 'object') plan.autoTweaks = raw.autoTweaks;
         if (raw.updated_at) plan.updated_at = raw.updated_at;
       }
       return plan;
@@ -7145,7 +7327,8 @@ function __bootWorkout() {
     /* Ξαναχτίζει το πρόγραμμα από τις ρυθμίσεις. Το ιστορικό δεν αγγίζεται:
        δένεται στα id του καταλόγου, που δεν αλλάζουν ποτέ. */
     function rebuild() {
-      BUILD = buildProgram(state.plan.config);
+      const own = usingCustom() ? customBuild(state.plan.custom) : null;
+      BUILD = own || buildProgram(state.plan.config);
       PROGRAM = BUILD.program;
       DAY_ORDER = BUILD.order;
       DAY_ORDER.forEach((d) => {
@@ -8642,6 +8825,7 @@ function __bootWorkout() {
           : 'Ο browser μπλοκάρει την τοπική αποθήκευση, οπότε τα δεδομένα κρατιούνται μόνο για αυτή τη συνεδρία. Σε κανονική σελίδα θα αποθηκεύονται μόνιμα.';
       renderSyncStatus();
       renderConfig();
+      renderPlanMode();
     }
 
     /* ---------- Ο στόχος και το πρόγραμμα ----------
@@ -8765,6 +8949,7 @@ function __bootWorkout() {
         : currentDays();
       applyPlanConfig({ ...configFor(days), level: lvl });
       renderConfig();
+      renderChoiceText();
     }
 
     /* Πόσες μέρες θέλει ο πελάτης. Χωρίς δική του επιλογή, όσες έχει το μείγμα. */
@@ -8816,6 +9001,10 @@ function __bootWorkout() {
     }
 
     function renderConfig() {
+      if (usingCustom()) {
+        ['#goal-panel', '#days-panel', '#config-panel'].forEach((sel) => { const el = $(sel); if (el) el.hidden = true; });
+        return;
+      }
       renderGoalPanel();
       const host = $('#config-panel');
       if (!host) return;
@@ -9700,16 +9889,538 @@ function __bootWorkout() {
     const clientLink = $('#client-link');
     if (clientLink) clientLink.href = CLIENT_URL;
 
+    /* ---------- Το δικό σου πρόγραμμα ----------
+       plan.config.mode: 'auto'   = το πρόγραμμα της εφαρμογής (buildProgram)
+                         'custom' = plan.custom, ανεβασμένο ή γραμμένο με το χέρι
+                         κενό     = δεν έχει διαλέξει ακόμα → βγαίνει η επιλογή.
+       Όταν φεύγεις από το αυτόματο, οι αλλαγές σου πάνω του (overrides,
+       extras) φυλάγονται στο plan.autoTweaks και γυρνάνε αν επιστρέψεις. */
+
+    const MAX_CUSTOM_DAYS = 7;
+    const MAX_UPLOAD_MB = 15;
+    const KIND_LABEL = { lift: 'Βάρη', cardio: 'Καρντιό', walk: 'Περπάτημα' };
+    const ROLE_REST = { main: 150, aux: 120, iso: 75 };
+
+    function usingCustom() {
+      const c = state.plan.custom;
+      return state.plan.config.mode === 'custom' && !!c && Array.isArray(c.days) && c.days.length > 0;
+    }
+
+    const normName = (t) => String(t || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9α-ω]+/g, ' ').trim();
+
+    let NAME_INDEX = null;
+    function catalogIdFor(name) {
+      if (!NAME_INDEX) {
+        NAME_INDEX = {};
+        Object.keys(CATALOG).forEach((id) => {
+          const full = CATALOG[id].name;
+          [full, ...full.split(/\s+ή\s+/)].forEach((n) => {
+            const k = normName(n);
+            if (k && !NAME_INDEX[k]) NAME_INDEX[k] = id;
+          });
+        });
+      }
+      return NAME_INDEX[normName(name)] || null;
+    }
+
+    function parseReps(v) {
+      const m = String(v || '').match(/(\d+)\s*(?:[-–—\/]|έως|to)?\s*(\d+)?/);
+      if (!m) return [8, 12];
+      const a = clamp(Number(m[1]), 1, 100);
+      const b = m[2] ? clamp(Number(m[2]), 1, 100) : a;
+      return a <= b ? [a, b] : [b, a];
+    }
+
+    /* Μετατρέπει το plan.custom σε ό,τι περιμένει το υπόλοιπο καρνέ —
+       ίδιο σχήμα με την buildProgram(). */
+    function customBuild(custom) {
+      const program = {};
+      const order = [];
+      custom.days.slice(0, MAX_CUSTOM_DAYS).forEach((d, i) => {
+        const key = DAY_KEYS_LOCAL[i];
+        order.push(key);
+        const name = String(d.name || '').trim() || `Μέρα ${i + 1}`;
+        if (d.kind === 'cardio' || d.kind === 'walk') {
+          const g = MOVE_GUIDE[d.kind] || { focus: 'Κίνηση', lines: [] };
+          program[key] = {
+            letter: String(i + 1), name, focus: g.focus, kind: 'move',
+            moveType: d.kind, guide: d.note ? [d.note, ...g.lines] : g.lines, exercises: []
+          };
+          return;
+        }
+        const exercises = (d.exercises || []).filter((e) => e && e.id && e.name).map((e) => {
+          const base = CATALOG[e.catalogId] || {};
+          return {
+            id: e.id,
+            name: e.name,
+            group: e.group || base.group || 'Άλλο',
+            sets: clamp(Number(e.sets) || 3, 1, 12),
+            repMin: Number(e.repMin) || 8,
+            repMax: Number(e.repMax) || Number(e.repMin) || 12,
+            rest: Number(e.rest) || ROLE_REST[base.role] || 90,
+            rir: base.bodyweight ? '—' : '1–3',
+            step: base.step || 2.5,
+            key: !!base.key,
+            bodyweight: !!base.bodyweight
+          };
+        });
+        const groups = [...new Set(exercises.map((e) => e.group))].slice(0, 3);
+        program[key] = {
+          letter: String(i + 1), name, focus: d.note || groups.join(', '),
+          kind: 'lift', exercises
+        };
+      });
+      return {
+        program, order, mix: {}, days: order.length,
+        liftDays: order.filter((k) => program[k].kind === 'lift').length,
+        preset: state.plan.config.preset, level: state.plan.config.level,
+        label: 'Δικό σου πρόγραμμα', note: '', nutritionGoal: null
+      };
+    }
+    const DAY_KEYS_LOCAL = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+
+    /* ---- Η οθόνη επιλογής ---- */
+
+    function openSetup(canCancel) {
+      $('#plan-setup').hidden = false;
+      $('#plan-choice').hidden = false;
+      $('#plan-builder').hidden = true;
+      $('#choice-cancel').hidden = !canCancel;
+      $('#upload-status').innerHTML = '';
+      renderChoiceText();
+      $('#plan-setup').scrollTop = 0;
+    }
+
+    function closeSetup() {
+      $('#plan-setup').hidden = true;
+      DRAFT = null;
+    }
+
+    function renderChoiceText() {
+      const el = $('#choice-auto-text');
+      if (!el) return;
+      const c = goalConfig();
+      const days = state.plan.config.mode === 'custom' ? targetDays() : currentDays();
+      if (c && PRESETS[c.preset]) {
+        el.textContent = `Φτιαγμένο για τον στόχο σου, «${PRESETS[c.preset].label}», σε ${days} μέρες την εβδομάδα. Τις μέρες τις αλλάζεις μετά από την Πρόοδο.`;
+      } else {
+        el.textContent = `Δεν έχεις δηλώσει στόχο ακόμα, οπότε ξεκινάς με ένα γενικό πρόγραμμα ${days} ημερών. Τον στόχο τον βάζεις στις Ρυθμίσεις των κρατήσεων.`;
+      }
+    }
+
+    function stashAutoTweaks() {
+      if (state.plan.config.mode === 'custom') return;
+      state.plan.autoTweaks = { overrides: state.plan.overrides, extras: state.plan.extras };
+    }
+
+    function finishSwitch(message) {
+      savePlan();
+      rebuild();
+      state.day = suggestedDay();
+      state.editing = null;
+      state.swapping = null;
+      renderAll();
+      renderSettings();
+      closeSetup();
+      if (message && $('#plan-mode-status')) setStatus($('#plan-mode-status'), message, true);
+    }
+
+    function chooseAuto() {
+      const wasCustom = state.plan.config.mode === 'custom';
+      state.plan.config = { ...state.plan.config, mode: 'auto' };
+      if (wasCustom) {
+        const t = state.plan.autoTweaks || {};
+        state.plan.overrides = t.overrides || {};
+        state.plan.extras = t.extras || {};
+      }
+      finishSwitch('Ακολουθείς το πρόγραμμα της εφαρμογής.');
+    }
+
+    /* ---- Ο συντάκτης ---- */
+
+    let DRAFT = null;
+
+    const blankExercise = () => ({ name: '', group: '', sets: 3, reps: '8-12', catalogId: null });
+    const blankDay = (i) => ({ name: `Μέρα ${i + 1}`, kind: 'lift', note: '', exercises: [blankExercise()] });
+
+    /* Το τωρινό δικό σου πρόγραμμα, μαζί με ό,τι άλλαξες μέσα από την
+       Προπόνηση (αλλαγές, προσθήκες, αφαιρέσεις), ώστε να μη χαθεί τίποτα
+       όταν το ξανααποθηκεύσεις. */
+    function draftFromCurrent() {
+      const draft = DAY_ORDER.map((key, i) => {
+        const day = PROGRAM[key] || {};
+        const saved = (state.plan.custom.days[i] || {});
+        if (day.kind === 'move') {
+          return { name: day.name, kind: day.moveType === 'walk' ? 'walk' : 'cardio', note: saved.note || '', exercises: [] };
+        }
+        return {
+          name: day.name, kind: 'lift', note: saved.note || '',
+          exercises: dayExercises(key).map((e) => {
+            const was = (saved.exercises || []).find((x) => x.id === e.id);
+            return {
+              id: e.id, name: e.name, group: e.group, sets: e.sets,
+              reps: e.repMin === e.repMax ? String(e.repMin) : `${e.repMin}-${e.repMax}`,
+              rest: e.rest,
+              catalogId: (was && was.catalogId) || (CATALOG[e.id] ? e.id : catalogIdFor(e.name))
+            };
+          })
+        };
+      });
+      draft.source = state.plan.custom.source;
+      return draft;
+    }
+
+    function openBuilder(draft, lead) {
+      DRAFT = draft && draft.length ? draft : [blankDay(0)];
+      $('#plan-setup').hidden = false;
+      $('#plan-choice').hidden = true;
+      $('#plan-builder').hidden = false;
+      $('#builder-lead').textContent = lead ||
+        'Μία κάρτα για κάθε μέρα προπόνησης, με τη σειρά που τις κάνεις.';
+      $('#builder-status').innerHTML = '';
+      renderBuilder();
+      $('#plan-setup').scrollTop = 0;
+    }
+
+    function renderBuilder() {
+      const host = $('#builder-days');
+      const groups = [...new Set([...GROUPS, 'Άλλο'])];
+      const groupOpts = (cur) => `<option value="">Ομάδα</option>` +
+        groups.map((g) => `<option${g === cur ? ' selected' : ''}>${esc(g)}</option>`).join('');
+      host.innerHTML = DRAFT.map((d, di) => {
+        const head =
+          `<div class="bday-head"><span class="bday-num">${di + 1}.</span>` +
+          `<input type="text" data-f="dname" data-d="${di}" value="${esc(d.name)}" aria-label="Όνομα μέρας ${di + 1}" maxlength="40">` +
+          `<select data-f="kind" data-d="${di}" aria-label="Είδος μέρας">` +
+          Object.keys(KIND_LABEL).map((k) => `<option value="${k}"${k === d.kind ? ' selected' : ''}>${KIND_LABEL[k]}</option>`).join('') +
+          `</select></div>`;
+        const del = DRAFT.length > 1
+          ? `<button type="button" class="del" data-act="del-day" data-d="${di}">Αφαίρεσε τη μέρα</button>` : '<span></span>';
+        if (d.kind !== 'lift') {
+          return `<div class="bday">${head}<p class="bday-move">Μέρα χωρίς σετ: καταγράφεις μόνο διάρκεια και απόσταση.</p>` +
+            `<div class="bday-foot"><span></span>${del}</div></div>`;
+        }
+        const rows = d.exercises.map((e, ei) =>
+          `<div class="bex">` +
+          `<input type="text" class="bex-name" list="cat-names" data-f="name" data-d="${di}" data-e="${ei}" value="${esc(e.name)}" placeholder="Άσκηση" aria-label="Άσκηση ${ei + 1}" data-known="${!!e.catalogId}" style="grid-column: 1 / 4">` +
+          `<button type="button" class="icon-x" data-act="del-ex" data-d="${di}" data-e="${ei}" aria-label="Αφαίρεσε την άσκηση">×</button>` +
+          `<select data-f="group" data-d="${di}" data-e="${ei}" aria-label="Μυϊκή ομάδα">${groupOpts(e.group)}</select>` +
+          `<input type="number" inputmode="numeric" min="1" max="12" data-f="sets" data-d="${di}" data-e="${ei}" value="${esc(e.sets)}" aria-label="Σετ">` +
+          `<input type="text" inputmode="numeric" data-f="reps" data-d="${di}" data-e="${ei}" value="${esc(e.reps)}" placeholder="8-12" aria-label="Επαναλήψεις">` +
+          `<span></span></div>`
+        ).join('');
+        return `<div class="bday">${head}` +
+          `<div class="bex bex-labels"><span>Ομάδα</span><span>Σετ</span><span>Επαναλ.</span><span></span></div>` +
+          rows +
+          `<div class="bday-foot"><button type="button" class="add" data-act="add-ex" data-d="${di}">+ Άσκηση</button>${del}</div></div>`;
+      }).join('') +
+        `<datalist id="cat-names">${Object.values(CATALOG).map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>`;
+      $('#builder-add-day').hidden = DRAFT.length >= MAX_CUSTOM_DAYS;
+    }
+
+    on('#builder-days', 'input', (e) => {
+      const t = e.target;
+      const d = DRAFT && DRAFT[Number(t.dataset.d)];
+      if (!d) return;
+      const ex = t.dataset.e != null ? d.exercises[Number(t.dataset.e)] : null;
+      const f = t.dataset.f;
+      if (f === 'dname') d.name = t.value;
+      else if (f === 'kind') { d.kind = t.value; if (d.kind === 'lift' && !d.exercises.length) d.exercises.push(blankExercise()); renderBuilder(); }
+      else if (ex && f === 'name') {
+        ex.name = t.value;
+        ex.catalogId = catalogIdFor(t.value);
+        t.dataset.known = String(!!ex.catalogId);
+        if (ex.catalogId) {
+          ex.group = CATALOG[ex.catalogId].group;
+          const sel = t.parentElement.querySelector('select[data-f="group"]');
+          if (sel) sel.value = ex.group;
+        }
+      }
+      else if (ex && f === 'group') ex.group = t.value;
+      else if (ex && f === 'sets') ex.sets = t.value;
+      else if (ex && f === 'reps') ex.reps = t.value;
+    });
+
+    on('#builder-days', 'click', (e) => {
+      const b = e.target.closest('button[data-act]');
+      if (!b) return;
+      const di = Number(b.dataset.d);
+      const d = DRAFT[di];
+      if (b.dataset.act === 'add-ex') d.exercises.push(blankExercise());
+      if (b.dataset.act === 'del-ex') d.exercises.splice(Number(b.dataset.e), 1);
+      if (b.dataset.act === 'del-day') DRAFT.splice(di, 1);
+      renderBuilder();
+      if (b.dataset.act === 'add-ex') {
+        const rows = $$(`.bex-name[data-d="${di}"]`);
+        if (rows.length) rows[rows.length - 1].focus();
+      }
+    });
+
+    on('#builder-add-day', 'click', () => {
+      if (DRAFT.length >= MAX_CUSTOM_DAYS) return;
+      DRAFT.push(blankDay(DRAFT.length));
+      renderBuilder();
+    });
+
+    on('#builder-back', 'click', () => {
+      if (state.plan.config.mode) { openSetup(true); return; }
+      openSetup(false);
+    });
+
+    on('#builder-save', 'click', () => {
+      const days = [];
+      for (let i = 0; i < DRAFT.length; i++) {
+        const d = DRAFT[i];
+        const name = String(d.name || '').trim() || `Μέρα ${i + 1}`;
+        if (d.kind !== 'lift') { days.push({ name, kind: d.kind, note: d.note || '' }); continue; }
+        const used = new Set();
+        const exercises = d.exercises
+          .filter((e) => String(e.name || '').trim())
+          .map((e) => {
+            const [repMin, repMax] = parseReps(e.reps);
+            const cat = e.catalogId && CATALOG[e.catalogId] ? e.catalogId : catalogIdFor(e.name);
+            /* Η ίδια άσκηση του καταλόγου κρατάει το ίδιο id, ώστε να
+               συνεχίσει το ιστορικό της. Δεύτερη φορά στην ίδια μέρα
+               παίρνει καινούριο. */
+            let id = e.id || (cat && !used.has(cat) ? cat : uid());
+            if (used.has(id)) id = uid();
+            used.add(id);
+            return {
+              id, catalogId: cat || null,
+              name: String(e.name).trim().slice(0, 60),
+              group: e.group || (cat ? CATALOG[cat].group : 'Άλλο'),
+              sets: clamp(Math.round(Number(e.sets) || 3), 1, 12),
+              repMin, repMax,
+              rest: Number(e.rest) || (cat ? ROLE_REST[CATALOG[cat].role] : 90)
+            };
+          });
+        if (!exercises.length) {
+          setStatus($('#builder-status'), `Η μέρα «${esc(name)}» δεν έχει καμία άσκηση. Γράψε τουλάχιστον μία ή άλλαξε το είδος της.`, false);
+          return;
+        }
+        days.push({ name, kind: 'lift', note: d.note || '', exercises });
+      }
+      if (!days.some((d) => d.kind === 'lift')) {
+        setStatus($('#builder-status'), 'Χρειάζεται τουλάχιστον μία μέρα με βάρη.', false);
+        return;
+      }
+      stashAutoTweaks();
+      state.plan.custom = { days, source: DRAFT.source || 'manual', updated: today() };
+      state.plan.config = { ...state.plan.config, mode: 'custom' };
+      state.plan.overrides = {};
+      state.plan.extras = {};
+      finishSwitch('Αποθηκεύτηκε. Ακολουθείς το δικό σου πρόγραμμα.');
+    });
+
+    /* ---- Ανέβασμα αρχείου ---- */
+
+    const loadedScripts = {};
+    function loadScript(src) {
+      if (!loadedScripts[src]) {
+        loadedScripts[src] = new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = res;
+          s.onerror = () => { delete loadedScripts[src]; rej(new Error('Δεν φόρτωσε ο αναγνώστης αρχείων. Έλεγξε τη σύνδεσή σου.')); };
+          document.head.appendChild(s);
+        });
+      }
+      return loadedScripts[src];
+    }
+
+    const toBase64 = (blob) => new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).split(',')[1]);
+      r.onerror = () => rej(new Error('Δεν διαβάστηκε το αρχείο.'));
+      r.readAsDataURL(blob);
+    });
+
+    /* Οι φωτογραφίες κινητού είναι μεγάλες· τις μικραίνουμε πριν φύγουν. */
+    async function shrinkImage(file) {
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await new Promise((res, rej) => {
+          const i = new Image();
+          i.onload = () => res(i);
+          i.onerror = () => rej(new Error('Η εικόνα δεν ανοίγει. Στείλ\' τη ως JPG ή PNG.'));
+          i.src = url;
+        });
+        const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k);
+        c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+        return { media_type: 'image/jpeg', data: await toBase64(blob) };
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    const UNSUPPORTED = 'Αυτό το αρχείο δεν διαβάζεται. Στείλε PDF, Word (.docx), Excel, κείμενο ή φωτογραφία.';
+
+    async function readForAI(file) {
+      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) throw new Error(`Το αρχείο είναι πάνω από ${MAX_UPLOAD_MB} MB.`);
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const type = file.type || '';
+
+      if (type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+        return { file: await shrinkImage(file) };
+      }
+      if (type === 'application/pdf' || ext === 'pdf') {
+        return { file: { media_type: 'application/pdf', data: await toBase64(file) } };
+      }
+      if (['xlsx', 'xlsm', 'xls', 'ods'].includes(ext)) {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+        const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        return { text: wb.SheetNames.map((n) => `# ${n}\n` + window.XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n') };
+      }
+      if (ext === 'docx') {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+        const out = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        return { text: out.value };
+      }
+      if (['doc', 'pages', 'numbers', 'key', 'ppt', 'pptx'].includes(ext)) {
+        throw new Error('Αυτή η μορφή δεν διαβάζεται. Αποθήκευσέ το ως PDF και ξαναδοκίμασε.');
+      }
+      /* Ό,τι άλλο: το δοκιμάζουμε σαν κείμενο και βλέπουμε αν βγάζει νόημα. */
+      const text = await file.text();
+      const bad = (text.match(/[\u0000\uFFFD]/g) || []).length;
+      if (!text.trim() || bad > text.length * 0.02) throw new Error(UNSUPPORTED);
+      return { text };
+    }
+
+    async function parseWithAI(payload) {
+      const session = readClientSession ? readClientSession() : null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000);
+      try {
+        const res = await fetch(FN_URL, {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: FN_KEY,
+            Authorization: 'Bearer ' + FN_KEY
+          },
+          body: JSON.stringify({
+            client_id: session ? session.clientId : null,
+            ...payload,
+            text: payload.text ? payload.text.slice(0, 60000) : undefined,
+            catalog: Object.keys(CATALOG).map((id) => ({ id, name: CATALOG[id].name, group: CATALOG[id].group })),
+            groups: GROUPS
+          })
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data) throw new Error((data && data.error) || 'Η ανάγνωση απέτυχε. Δοκίμασε ξανά σε λίγο.');
+        return data;
+      } catch (e) {
+        if (e.name === 'AbortError') throw new Error('Άργησε πολύ. Δοκίμασε ξανά ή με μικρότερο αρχείο.');
+        throw e;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function draftFromAI(data) {
+      const days = Array.isArray(data.days) ? data.days.slice(0, MAX_CUSTOM_DAYS) : [];
+      return days.map((d, i) => {
+        const kind = KIND_LABEL[d.type] ? d.type : 'lift';
+        return {
+          name: String(d.name || `Μέρα ${i + 1}`).slice(0, 40),
+          kind,
+          note: String(d.note || '').slice(0, 200),
+          exercises: (Array.isArray(d.exercises) ? d.exercises : []).map((e) => {
+            const cat = e.catalog_id && CATALOG[e.catalog_id] ? e.catalog_id : catalogIdFor(e.name);
+            const min = Number(e.reps_min) || 0, max = Number(e.reps_max) || min;
+            return {
+              name: String(e.name || (cat ? CATALOG[cat].name : '')).slice(0, 60),
+              group: cat ? CATALOG[cat].group : (GROUPS.includes(e.group) ? e.group : 'Άλλο'),
+              sets: Number(e.sets) || 3,
+              reps: min ? (min === max ? String(min) : `${min}-${max}`) : '8-12',
+              rest: Number(e.rest_seconds) || null,
+              catalogId: cat || null
+            };
+          }).filter((e) => e.name)
+        };
+      });
+    }
+
+    on('#choice-upload', 'change', async (e) => {
+      const input = e.target;
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      const label = $('#choice-upload-label');
+      const status = $('#upload-status');
+      label.setAttribute('aria-disabled', 'true');
+      label.classList.add('busy');
+      status.innerHTML = `<div class="status ok">Διαβάζω το «${esc(file.name)}». Μπορεί να πάρει μισό λεπτό.</div>`;
+      try {
+        const payload = await readForAI(file);
+        const data = await parseWithAI(payload);
+        const draft = draftFromAI(data);
+        if (!draft.length) throw new Error('Δεν βρήκα πρόγραμμα προπόνησης σε αυτό το αρχείο. Δοκίμασε άλλο ή γράψ\' το μόνος σου.');
+        draft.source = 'upload';
+        status.innerHTML = '';
+        openBuilder(draft,
+          `Διάβασα το «${file.name}». Έλεγξε ότι όλα βγήκαν σωστά και διόρθωσε ό,τι χρειάζεται πριν το αποθηκεύσεις.`);
+      } catch (err) {
+        setStatus(status, esc(err.message || UNSUPPORTED), false);
+      } finally {
+        label.removeAttribute('aria-disabled');
+        label.classList.remove('busy');
+      }
+    });
+
+    on('#choice-auto', 'click', chooseAuto);
+    on('#choice-manual', 'click', () => {
+      openBuilder(usingCustom() ? draftFromCurrent() : null);
+    });
+    on('#choice-cancel', 'click', closeSetup);
+
+    /* ---- Η κάρτα στην Πρόοδο ---- */
+
+    function renderPlanMode() {
+      const host = $('#plan-mode-panel');
+      if (!host) return;
+      const own = usingCustom();
+      const n = DAY_ORDER.length;
+      host.innerHTML =
+        `<h3>${own ? 'Δικό σου πρόγραμμα' : 'Πρόγραμμα της εφαρμογής'}</h3>` +
+        `<p class="hint">${own
+          ? `${n} ${n === 1 ? 'μέρα' : 'μέρες'} την εβδομάδα${state.plan.custom.source === 'upload' ? ', από αρχείο που ανέβασες' : ''}.`
+          : 'Ακολουθεί τον στόχο σου από τις κρατήσεις.'}</p>` +
+        `<div class="plan-mode-row">` +
+        (own ? `<button type="button" class="btn btn-quiet" data-act="edit">Επεξεργασία</button>` : '') +
+        `<button type="button" class="btn btn-quiet" data-act="change">Άλλαξε πρόγραμμα</button>` +
+        `</div><div id="plan-mode-status"></div>`;
+      ['#goal-panel', '#days-panel', '#config-panel'].forEach((sel) => {
+        const el = $(sel);
+        if (el && own) el.hidden = true;
+      });
+      if (!own) { const d = $('#days-panel'); const c = $('#config-panel'); if (d) d.hidden = false; if (c) c.hidden = false; }
+    }
+
+    on('#plan-mode-panel', 'click', (e) => {
+      const b = e.target.closest('button[data-act]');
+      if (!b) return;
+      if (b.dataset.act === 'edit') openBuilder(draftFromCurrent());
+      if (b.dataset.act === 'change') openSetup(true);
+    });
+
+
     /* ---------- Πλοήγηση ---------- */
 
     function showView(name) {
       state.view = name;
-      ['train', 'progress', 'nutrition', 'settings'].forEach((v) => {
+      ['train', 'progress', 'nutrition'].forEach((v) => {
         $('#view-' + v).hidden = v !== name;
       });
       $$('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === name)));
-      if (name === 'progress') renderProgress();
-      if (name === 'settings') renderSettings();
+      if (name === 'progress') { renderProgress(); renderSettings(); }
       window.scrollTo({ top: 0 });
     }
 
@@ -9742,6 +10453,8 @@ function __bootWorkout() {
     /* Όταν ο πελάτης αλλάξει στόχο ή επίπεδο στις κρατήσεις, το καρνέ
        ξαναδιαβάζει χωρίς να χρειαστεί επανεκκίνηση. */
     window.__workoutReloadGoals = loadGoals;
+
+    if (!state.plan.config.mode) openSetup(false);
 
     /* Πρώτος γύρος συγχρονισμού μόλις σταθεί η οθόνη. */
     store.syncNow();
