@@ -961,7 +961,8 @@ body.mode-workout {
   max-width: 560px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
 }
 
 .tab {
@@ -1826,7 +1827,7 @@ button.history-item:active { background: var(--accent-soft); }
 
 .bex {
   display: grid;
-  grid-template-columns: 1fr 52px 76px 36px;
+  grid-template-columns: 1fr 48px 66px 60px;
   gap: 6px;
   align-items: center;
   padding: 6px 0;
@@ -1834,9 +1835,14 @@ button.history-item:active { background: var(--accent-soft); }
 }
 .bex-labels { border-top: 0; padding: 0 0 2px; font-size: 11.5px; color: var(--muted); }
 .bex input { width: 100%; }
+.bex input[type="number"], .bex input[data-f="reps"] { padding: 8px 6px; text-align: center; }
+.bex input[type="number"]::-webkit-inner-spin-button,
+.bex input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.bex input[type="number"] { -moz-appearance: textfield; }
 .bex .bex-name[data-known="true"] { border-color: var(--accent-line); }
 .icon-x {
   width: 36px; height: 36px;
+  justify-self: end;
   border-radius: 8px;
   border: 1px solid var(--rule);
   background: transparent;
@@ -5193,19 +5199,6 @@ loadAppSettings().then(() => {
     <div class="panel" id="plan-mode-panel"></div>
 
     <div class="panel" id="goal-panel" hidden></div>
-
-    <div class="panel" id="days-panel">
-      <h3>Μέρες την εβδομάδα</h3>
-      <p class="hint">Πόσες μέρες θέλεις να γυμνάζεσαι μέσα στην εβδομάδα;</p>
-      <div class="day-pick" id="cfg-days"></div>
-    </div>
-
-    <div class="panel" id="config-panel">
-      <h3>Η εβδομάδα σου</h3>
-      <p class="hint" id="cfg-total"></p>
-      <div id="cfg-mix"></div>
-      <div id="cfg-status"></div>
-    </div>
 
     <div class="panel">
       <h3>Τα δεδομένα σου</h3>
@@ -9890,9 +9883,15 @@ function __bootWorkout() {
     function catalogIdFor(name) {
       if (!NAME_INDEX) {
         NAME_INDEX = {};
-        Object.keys(CATALOG).forEach((id) => {
-          const full = CATALOG[id].name;
-          [full, ...full.split(/\s+ή\s+/)].forEach((n) => {
+        /* Πρώτα τα ολόκληρα ονόματα, μετά τα κομμάτια του «Χ ή Υ», ώστε
+           το «Leg press» να δείχνει στο δικό του id και όχι στο squat. */
+        const ids = Object.keys(CATALOG);
+        ids.forEach((id) => {
+          const k = normName(CATALOG[id].name);
+          if (k && !NAME_INDEX[k]) NAME_INDEX[k] = id;
+        });
+        ids.forEach((id) => {
+          CATALOG[id].name.split(/\s+ή\s+/).forEach((n) => {
             const k = normName(n);
             if (k && !NAME_INDEX[k]) NAME_INDEX[k] = id;
           });
@@ -9936,10 +9935,10 @@ function __bootWorkout() {
             repMin: Number(e.repMin) || 8,
             repMax: Number(e.repMax) || Number(e.repMin) || 12,
             rest: Number(e.rest) || ROLE_REST[base.role] || 90,
-            rir: base.bodyweight ? '—' : '1–3',
-            step: base.step || 2.5,
+            rir: (e.bodyweight != null ? e.bodyweight : base.bodyweight) ? '—' : '1–3',
+            step: Number(e.step) || base.step || 2.5,
             key: !!base.key,
-            bodyweight: !!base.bodyweight
+            bodyweight: e.bodyweight != null ? !!e.bodyweight : !!base.bodyweight
           };
         });
         const groups = [...new Set(exercises.map((e) => e.group))].slice(0, 3);
@@ -9979,7 +9978,7 @@ function __bootWorkout() {
       const c = goalConfig();
       const days = state.plan.config.mode === 'custom' ? targetDays() : currentDays();
       if (c && PRESETS[c.preset]) {
-        el.textContent = `Φτιαγμένο για τον στόχο σου, «${PRESETS[c.preset].label}», σε ${days} μέρες την εβδομάδα. Τις μέρες τις αλλάζεις μετά από την Πρόοδο.`;
+        el.textContent = `Φτιαγμένο για τον στόχο σου, «${PRESETS[c.preset].label}», σε ${days} μέρες την εβδομάδα. Στόχο και μέρες τα αλλάζεις από τις Ρυθμίσεις των κρατήσεων.`;
       } else {
         el.textContent = `Δεν έχεις δηλώσει στόχο ακόμα, οπότε ξεκινάς με ένα γενικό πρόγραμμα ${days} ημερών. Τον στόχο τον βάζεις στις Ρυθμίσεις των κρατήσεων.`;
       }
@@ -10017,6 +10016,8 @@ function __bootWorkout() {
 
     let DRAFT = null;
 
+    const restFor = (e) => (e.catalogId && CATALOG[e.catalogId] ? ROLE_REST[CATALOG[e.catalogId].role] : 90);
+
     const blankExercise = () => ({ name: '', group: '', sets: 3, reps: '8-12', catalogId: null });
     const blankDay = (i) => ({ name: `Μέρα ${i + 1}`, kind: 'lift', note: '', exercises: [blankExercise()] });
 
@@ -10038,6 +10039,8 @@ function __bootWorkout() {
               id: e.id, name: e.name, group: e.group, sets: e.sets,
               reps: e.repMin === e.repMax ? String(e.repMin) : `${e.repMin}-${e.repMax}`,
               rest: e.rest,
+              step: e.step,
+              bodyweight: !!e.bodyweight,
               catalogId: (was && was.catalogId) || (CATALOG[e.id] ? e.id : catalogIdFor(e.name))
             };
           })
@@ -10083,10 +10086,11 @@ function __bootWorkout() {
           `<select data-f="group" data-d="${di}" data-e="${ei}" aria-label="Μυϊκή ομάδα">${groupOpts(e.group)}</select>` +
           `<input type="number" inputmode="numeric" min="1" max="12" data-f="sets" data-d="${di}" data-e="${ei}" value="${esc(e.sets)}" aria-label="Σετ">` +
           `<input type="text" inputmode="numeric" data-f="reps" data-d="${di}" data-e="${ei}" value="${esc(e.reps)}" placeholder="8-12" aria-label="Επαναλήψεις">` +
-          `<span></span></div>`
+          `<input type="number" inputmode="numeric" min="15" max="600" step="15" data-f="rest" data-d="${di}" data-e="${ei}" value="${esc(e.rest || restFor(e))}" aria-label="Ξεκούραση σε δευτερόλεπτα">` +
+          `</div>`
         ).join('');
         return `<div class="bday">${head}` +
-          `<div class="bex bex-labels"><span>Ομάδα</span><span>Σετ</span><span>Επαναλ.</span><span></span></div>` +
+          `<div class="bex bex-labels"><span>Ομάδα</span><span>Σετ</span><span>Επαναλ.</span><span>Ξεκ. (δ)</span></div>` +
           rows +
           `<div class="bday-foot"><button type="button" class="add" data-act="add-ex" data-d="${di}">+ Άσκηση</button>${del}</div></div>`;
       }).join('') +
@@ -10111,10 +10115,15 @@ function __bootWorkout() {
           const sel = t.parentElement.querySelector('select[data-f="group"]');
           if (sel) sel.value = ex.group;
         }
+        if (!ex.restTouched) {
+          const r = t.parentElement.querySelector('input[data-f="rest"]');
+          if (r) r.value = restFor(ex);
+        }
       }
       else if (ex && f === 'group') ex.group = t.value;
       else if (ex && f === 'sets') ex.sets = t.value;
       else if (ex && f === 'reps') ex.reps = t.value;
+      else if (ex && f === 'rest') { ex.rest = t.value; ex.restTouched = true; }
     });
 
     on('#builder-days', 'click', (e) => {
@@ -10167,7 +10176,9 @@ function __bootWorkout() {
               group: e.group || (cat ? CATALOG[cat].group : 'Άλλο'),
               sets: clamp(Math.round(Number(e.sets) || 3), 1, 12),
               repMin, repMax,
-              rest: Number(e.rest) || (cat ? ROLE_REST[CATALOG[cat].role] : 90)
+              rest: clamp(Math.round(Number(e.rest) || (cat ? ROLE_REST[CATALOG[cat].role] : 90)), 15, 600),
+              step: Number(e.step) || (cat ? CATALOG[cat].step : 2.5),
+              bodyweight: e.bodyweight != null ? !!e.bodyweight : !!(cat && CATALOG[cat].bodyweight)
             };
           });
         if (!exercises.length) {
