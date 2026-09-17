@@ -4680,6 +4680,93 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
   );
 }
 
+/* Αναζήτηση πελάτη με προτάσεις: με το πρώτο γράμμα δείχνει όσους
+   το όνομα ή το επώνυμό τους ξεκινά έτσι. Αγνοεί τόνους και κεφαλαία. */
+const pNorm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+function ClientAutocomplete({ onPick, onAuthFail }) {
+  const [all, setAll] = useState(null);
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await rpc("admin_clients", { p_search: "" });
+      if (!alive) return;
+      if (error === "AUTH") { onAuthFail(); return; }
+      setAll(data || []);
+    })();
+    return () => { alive = false; };
+  }, [onAuthFail]);
+
+  const hits = useMemo(() => {
+    const term = pNorm(q);
+    if (!term || !all) return [];
+    return all
+      .filter((c) => {
+        const name = pNorm(c.name);
+        /* Ταιριάζει στην αρχή του ονόματος ή οποιασδήποτε λέξης του. */
+        return name.startsWith(term) || name.split(/\s+/).some((w) => w.startsWith(term));
+      })
+      /* Πρώτα όσοι ξεκινούν έτσι στο μικρό όνομα, μετά στο επώνυμο. */
+      .sort((a, b) => {
+        const ra = pNorm(a.name).startsWith(term) ? 0 : 1;
+        const rb = pNorm(b.name).startsWith(term) ? 0 : 1;
+        return ra - rb || String(a.name).localeCompare(String(b.name), "el");
+      })
+      .slice(0, 8);
+  }, [all, q]);
+
+  useEffect(() => { setHi(0); }, [q]);
+
+  const pick = (c) => { setQ(""); setOpen(false); onPick(c); };
+
+  const onKey = (e) => {
+    if (!hits.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => (h + 1) % hits.length); setOpen(true); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => (h - 1 + hits.length) % hits.length); }
+    else if (e.key === "Enter") { e.preventDefault(); pick(hits[hi] || hits[0]); }
+    else if (e.key === "Escape") { setOpen(false); }
+  };
+
+  if (all === null) return <div className="f-text mt-2 text-[14px] text-neutral-400">Φόρτωση πελατών…</div>;
+  if (all.length === 0) return <div className="f-text mt-2 text-[14px] text-neutral-500">Δεν υπάρχουν πελάτες ακόμα.</div>;
+
+  const showList = open && pNorm(q);
+
+  return (
+    <div className="relative mt-2">
+      <input value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={onKey}
+        placeholder="Γράψε το όνομα του πελάτη"
+        autoComplete="off"
+        role="combobox" aria-expanded={!!showList} aria-controls="client-suggest"
+        className="f-text h-12 w-full border-2 border-black bg-white px-4 text-[15px] outline-none" />
+      {showList && (
+        <div id="client-suggest" role="listbox"
+          className="absolute left-0 right-0 top-full z-30 -mt-[2px] max-h-[320px] overflow-y-auto border-2 border-black bg-white">
+          {hits.length === 0 ? (
+            <div className="f-text px-4 py-3 text-[14px] text-neutral-500">Κανένας πελάτης που να ξεκινά έτσι.</div>
+          ) : hits.map((c, i) => (
+            <button key={c.id} role="option" aria-selected={i === hi}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setHi(i)}
+              onClick={() => pick(c)}
+              className={`f-text block w-full px-4 py-3 text-left text-[15px] ${i === hi ? "bg-neutral-100" : ""}`}>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Programs({ flash, onAuthFail }) {
   const [list, setList] = useState(null);
   const [client, setClient] = useState(null);
@@ -4709,8 +4796,8 @@ function Programs({ flash, onAuthFail }) {
         <>
           <h3 className="f-display mt-7 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Νέο ή υπάρχον πρόγραμμα</h3>
           <div className="max-w-md">
-            <OneClientPicker clientId={null} clientName=""
-              onPick={(c) => setClient({ id: c.id, name: c.name })} onClear={() => {}} onAuthFail={onAuthFail} />
+            <ClientAutocomplete onAuthFail={onAuthFail}
+              onPick={(c) => setClient({ id: c.id, name: c.name })} />
           </div>
 
           <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πελάτες με πρόγραμμα</h3>
