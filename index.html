@@ -1827,22 +1827,24 @@ button.history-item:active { background: var(--accent-soft); }
 
 .bex {
   display: grid;
-  grid-template-columns: 1fr 48px 66px 60px;
   gap: 6px;
-  align-items: center;
-  padding: 6px 0;
+  padding: 10px 0;
   border-top: 1px solid var(--rule);
 }
-.bex-labels { border-top: 0; padding: 0 0 2px; font-size: 11.5px; color: var(--muted); }
-.bex input { width: 100%; }
-.bex input[type="number"], .bex input[data-f="reps"] { padding: 8px 6px; text-align: center; }
+.bex-top { display: flex; gap: 6px; align-items: center; }
+.bex-top select { flex: 1; font-weight: 600; }
+.bex select, .bex input { width: 100%; }
+.bex-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.bex-nums label { display: grid; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.bex-nums input { text-align: center; padding: 8px 6px; font-size: 16px; color: var(--ink); }
+.bex select, .bex .bex-own { font-size: 16px; }
 .bex input[type="number"]::-webkit-inner-spin-button,
 .bex input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .bex input[type="number"] { -moz-appearance: textfield; }
-.bex .bex-name[data-known="true"] { border-color: var(--accent-line); }
+.bex select:disabled { opacity: .5; }
 .icon-x {
+  flex: 0 0 36px;
   width: 36px; height: 36px;
-  justify-self: end;
   border-radius: 8px;
   border: 1px solid var(--rule);
   background: transparent;
@@ -10012,20 +10014,160 @@ function __bootWorkout() {
       finishSwitch('Ακολουθείς το πρόγραμμα της εφαρμογής.');
     }
 
-    /* ---- Ο συντάκτης ---- */
+    /* ---- Ο συντάκτης ----
+       Κάθε άσκηση: πρώτα ομάδα, μετά άσκηση από έτοιμη λίστα (ή «Άλλη»).
+       Η ξεκούραση και οι επαναλήψεις μπαίνουν αυτόματα ανάλογα με την
+       ομάδα και το αν η άσκηση είναι σύνθετη ή απομονωτική, μέχρι να τις
+       αλλάξει ο ίδιος ο χρήστης. */
+
+    /* Προτεινόμενη ξεκούραση (δευτ.) ανά ομάδα: [σύνθετη, απομονωτική]. */
+    const GROUP_REST = {
+      'Πόδια':  [180, 90],
+      'Πλάτη':  [150, 90],
+      'Στήθος': [150, 75],
+      'Ώμοι':   [120, 60],
+      'Χέρια':  [90, 60],
+      'Γάμπες': [60, 60],
+      'Κορμός': [45, 45],
+      'Άλλο':   [90, 60]
+    };
+    const GROUP_REPS = {
+      'Πόδια':  ['6-10', '10-15'],
+      'Πλάτη':  ['6-10', '10-15'],
+      'Στήθος': ['6-10', '10-15'],
+      'Ώμοι':   ['8-12', '12-20'],
+      'Χέρια':  ['8-12', '10-15'],
+      'Γάμπες': ['10-15', '10-15'],
+      'Κορμός': ['10-15', '10-15'],
+      'Άλλο':   ['8-12', '10-15']
+    };
+
+    /* Έτοιμες ασκήσεις ανά ομάδα, από την πιο αποδοτική προς την πιο
+       ήπια για μυϊκή ανάπτυξη. c = id του καταλόγου (κρατάει ιστορικό με
+       το αυτόματο πρόγραμμα), iso = απομονωτική, bw = με το βάρος του
+       σώματος, s = βήμα βάρους σε kg. */
+    const LIBRARY = {
+      'Πόδια': [
+        { id: 'squat', c: 'squat', name: 'Squat με μπάρα', s: 2.5 },
+        { id: 'x_hack', name: 'Hack squat', s: 5 },
+        { id: 'legpress', c: 'legpress', name: 'Leg press', s: 5 },
+        { id: 'rdl', c: 'rdl', name: 'Romanian deadlift', s: 2.5 },
+        { id: 'split', c: 'split', name: 'Bulgarian split squat', s: 2 },
+        { id: 'legcurl', c: 'legcurl', name: 'Κάμψεις δικεφάλων μηρού', iso: true, s: 2.5 },
+        { id: 'hipthrust', c: 'hipthrust', name: 'Hip thrust', s: 5 },
+        { id: 'legext', c: 'legext', name: 'Εκτάσεις τετρακεφάλων', iso: true, s: 2.5 },
+        { id: 'x_lunge', name: 'Προβολές (lunges)', s: 2 },
+        { id: 'gobsquat', c: 'gobsquat', name: 'Goblet squat', s: 2.5 },
+        { id: 'bridge', c: 'bridge', name: 'Γέφυρα γλουτών στο πάτωμα', iso: true, bw: true, s: 1 },
+        { id: 'bwsquat', c: 'bwsquat', name: 'Καθίσματα με το σώμα σου', bw: true, s: 1 }
+      ],
+      'Πλάτη': [
+        { id: 'pullup', c: 'pullup', name: 'Έλξεις (pull-ups)', bw: true, s: 1 },
+        { id: 'x_bbrow', name: 'Κωπηλατική με μπάρα', s: 2.5 },
+        { id: 'pulldown', c: 'pulldown', name: 'Έλξεις τροχαλίας (lat pulldown)', s: 2.5 },
+        { id: 'row', c: 'row', name: 'Κωπηλατική τροχαλίας καθιστός', s: 2.5 },
+        { id: 'dbrow', c: 'dbrow', name: 'Κωπηλατική με αλτήρα', s: 2.5 },
+        { id: 'x_tbar', name: 'T-bar row', s: 2.5 },
+        { id: 'x_machrow', name: 'Κωπηλατική μηχανής', s: 5 },
+        { id: 'x_asspull', name: 'Έλξεις με βοήθεια (assisted)', s: 5 },
+        { id: 'pullover', c: 'pullover', name: 'Straight-arm pulldown', iso: true, s: 2.5 },
+        { id: 'invrow', c: 'invrow', name: 'Ανάποδες κωπηλατικές (inverted rows)', bw: true, s: 1 }
+      ],
+      'Στήθος': [
+        { id: 'bench', c: 'bench', name: 'Πιέσεις στήθους με μπάρα', s: 2.5 },
+        { id: 'dbpress', c: 'dbpress', name: 'Πιέσεις στήθους με αλτήρες', s: 2 },
+        { id: 'incline', c: 'incline', name: 'Πιέσεις στήθους με κλίση', s: 2.5 },
+        { id: 'x_machpress', name: 'Πιέσεις στήθους μηχανής', s: 5 },
+        { id: 'x_chestdip', name: 'Βυθίσεις για στήθος', bw: true, s: 1 },
+        { id: 'x_cablefly', name: 'Σταυροί τροχαλίας', iso: true, s: 2.5 },
+        { id: 'fly', c: 'fly', name: 'Butterfly (pec deck)', iso: true, s: 2.5 },
+        { id: 'pushup', c: 'pushup', name: 'Push-ups', bw: true, s: 1 }
+      ],
+      'Ώμοι': [
+        { id: 'ohp', c: 'ohp', name: 'Πιέσεις ώμων με μπάρα', s: 2.5 },
+        { id: 'dbohp', c: 'dbohp', name: 'Πιέσεις ώμων με αλτήρες', s: 2 },
+        { id: 'x_cablelat', name: 'Πλάγιες άρσεις τροχαλίας', iso: true, s: 1 },
+        { id: 'lateral', c: 'lateral', name: 'Πλάγιες άρσεις με αλτήρες', iso: true, s: 1 },
+        { id: 'x_machohp', name: 'Πιέσεις ώμων μηχανής', s: 5 },
+        { id: 'facepull', c: 'facepull', name: 'Face pulls', iso: true, s: 1 },
+        { id: 'reverfly', c: 'reverfly', name: 'Ανοίγματα οπίσθιων δελτοειδών', iso: true, s: 1 },
+        { id: 'x_arnold', name: 'Arnold press', s: 2 },
+        { id: 'x_machlat', name: 'Πλάγιες άρσεις μηχανής', iso: true, s: 2.5 },
+        { id: 'pike', c: 'pike', name: 'Pike push-ups', bw: true, s: 1 }
+      ],
+      'Χέρια': [
+        { id: 'dips', c: 'dips', name: 'Βυθίσεις (dips)', bw: true, s: 1 },
+        { id: 'x_cgbench', name: 'Κλειστές πιέσεις (close-grip)', s: 2.5 },
+        { id: 'x_ohext', name: 'Εκτάσεις τρικεφάλων πάνω από το κεφάλι', iso: true, s: 1 },
+        { id: 'x_bbcurl', name: 'Δικέφαλα με μπάρα', iso: true, s: 1 },
+        { id: 'x_inccurl', name: 'Δικέφαλα σε πάγκο με κλίση', iso: true, s: 1 },
+        { id: 'triceps', c: 'triceps', name: 'Τρικέφαλα τροχαλίας', iso: true, s: 1 },
+        { id: 'curl', c: 'curl', name: 'Δικέφαλα με αλτήρες', iso: true, s: 1 },
+        { id: 'hammer', c: 'hammer', name: 'Σφυριά (hammer curls)', iso: true, s: 1 },
+        { id: 'x_cablecurl', name: 'Δικέφαλα τροχαλίας', iso: true, s: 1 }
+      ],
+      'Γάμπες': [
+        { id: 'x_standcalf', name: 'Γάμπες όρθιος σε μηχάνημα', iso: true, s: 5 },
+        { id: 'x_lpcalf', name: 'Γάμπες στο leg press', iso: true, s: 5 },
+        { id: 'calves', c: 'calves', name: 'Γάμπες με αλτήρες', iso: true, s: 2.5 },
+        { id: 'x_seatcalf', name: 'Γάμπες καθιστός', iso: true, s: 2.5 },
+        { id: 'calvesbw', c: 'calvesbw', name: 'Γάμπες με το σώμα σου', iso: true, bw: true, s: 1 }
+      ],
+      'Κορμός': [
+        { id: 'x_hangraise', name: 'Ανυψώσεις ποδιών σε κρέμαση', iso: true, bw: true, s: 1 },
+        { id: 'x_cablecrunch', name: 'Κοιλιακοί τροχαλίας (cable crunch)', iso: true, s: 2.5 },
+        { id: 'x_abwheel', name: 'Ab wheel', iso: true, bw: true, s: 1 },
+        { id: 'core', c: 'core', name: 'Plank', iso: true, bw: true, s: 1 },
+        { id: 'pallof', c: 'pallof', name: 'Pallof press', iso: true, s: 1 },
+        { id: 'birddog', c: 'birddog', name: 'Dead bug / bird dog', iso: true, bw: true, s: 1 }
+      ]
+    };
+    const BUILDER_GROUPS = Object.keys(LIBRARY).concat('Άλλο');
+    const LIB_BY_ID = {};
+    Object.keys(LIBRARY).forEach((g) => LIBRARY[g].forEach((x) => { LIB_BY_ID[x.id] = { ...x, group: g }; }));
+
+    const libDefaults = (group, lib) => {
+      const k = lib && lib.iso ? 1 : 0;
+      return {
+        rest: (GROUP_REST[group] || GROUP_REST['Άλλο'])[k],
+        reps: (GROUP_REPS[group] || GROUP_REPS['Άλλο'])[k]
+      };
+    };
 
     let DRAFT = null;
 
-    const restFor = (e) => (e.catalogId && CATALOG[e.catalogId] ? ROLE_REST[CATALOG[e.catalogId].role] : 90);
-
-    const blankExercise = () => ({ name: '', group: '', sets: 3, reps: '8-12', catalogId: null });
+    const blankExercise = () => ({ group: '', libId: '', name: '', sets: 3, reps: '', rest: '' });
     const blankDay = (i) => ({ name: `Μέρα ${i + 1}`, kind: 'lift', note: '', exercises: [blankExercise()] });
+
+    /* Διαλέγει την καλύτερη άσκηση της ομάδας που δεν υπάρχει ήδη στη μέρα. */
+    function firstFree(group, day, self) {
+      const taken = new Set(day.exercises.filter((x) => x !== self).map((x) => x.libId));
+      const list = LIBRARY[group] || [];
+      const pick = list.find((x) => !taken.has(x.id)) || list[0];
+      return pick ? pick.id : '';
+    }
+
+    function applyDefaults(ex) {
+      const lib = LIB_BY_ID[ex.libId];
+      const def = libDefaults(ex.group, lib);
+      if (!ex.restTouched) ex.rest = def.rest;
+      if (!ex.repsTouched) ex.reps = def.reps;
+    }
+
+    /* Βρίσκει σε ποια έτοιμη άσκηση αντιστοιχεί μια αποθηκευμένη. */
+    function libFor(saved, e) {
+      if (saved && saved.libId && LIB_BY_ID[saved.libId]) return saved.libId;
+      if (LIB_BY_ID[e.id]) return e.id;
+      const n = normName(e.name);
+      const hit = Object.values(LIB_BY_ID).find((x) => normName(x.name) === n);
+      return hit ? hit.id : '';
+    }
 
     /* Το τωρινό δικό σου πρόγραμμα, μαζί με ό,τι άλλαξες μέσα από την
        Προπόνηση (αλλαγές, προσθήκες, αφαιρέσεις), ώστε να μη χαθεί τίποτα
        όταν το ξανααποθηκεύσεις. */
     function draftFromCurrent() {
-      const draft = DAY_ORDER.map((key, i) => {
+      return DAY_ORDER.map((key, i) => {
         const day = PROGRAM[key] || {};
         const saved = (state.plan.custom.days[i] || {});
         if (day.kind === 'move') {
@@ -10035,18 +10177,23 @@ function __bootWorkout() {
           name: day.name, kind: 'lift', note: saved.note || '',
           exercises: dayExercises(key).map((e) => {
             const was = (saved.exercises || []).find((x) => x.id === e.id);
+            const libId = libFor(was, e);
+            const lib = LIB_BY_ID[libId];
+            /* Αν το όνομα άλλαξε από την Προπόνηση, κρατιέται ως «Άλλη». */
+            const same = lib && normName(lib.name) === normName(e.name);
             return {
-              id: e.id, name: e.name, group: e.group, sets: e.sets,
+              id: e.id,
+              group: BUILDER_GROUPS.includes(e.group) ? e.group : 'Άλλο',
+              libId: same ? libId : '',
+              name: e.name,
+              sets: e.sets,
               reps: e.repMin === e.repMax ? String(e.repMin) : `${e.repMin}-${e.repMax}`,
-              rest: e.rest,
-              step: e.step,
-              bodyweight: !!e.bodyweight,
-              catalogId: (was && was.catalogId) || (CATALOG[e.id] ? e.id : catalogIdFor(e.name))
+              rest: e.rest, restTouched: true, repsTouched: true,
+              step: e.step, bodyweight: !!e.bodyweight
             };
           })
         };
       });
-      return draft;
     }
 
     function openBuilder(draft, lead) {
@@ -10055,17 +10202,45 @@ function __bootWorkout() {
       $('#plan-choice').hidden = true;
       $('#plan-builder').hidden = false;
       $('#builder-lead').textContent = lead ||
-        'Μία κάρτα για κάθε μέρα προπόνησης, με τη σειρά που τις κάνεις.';
+        'Για κάθε άσκηση διάλεξε πρώτα ομάδα και μετά άσκηση. Οι ασκήσεις είναι με σειρά από την πιο αποδοτική. Η ξεκούραση μπαίνει μόνη της.';
       $('#builder-status').innerHTML = '';
       renderBuilder();
       $('#plan-setup').scrollTop = 0;
     }
 
+    function exerciseRow(e, di, ei) {
+      const at = `data-d="${di}" data-e="${ei}"`;
+      const groupSel =
+        `<select data-f="group" ${at} aria-label="Μυϊκή ομάδα άσκησης ${ei + 1}">` +
+        `<option value="">Διάλεξε ομάδα</option>` +
+        BUILDER_GROUPS.map((g) => `<option${g === e.group ? ' selected' : ''}>${esc(g)}</option>`).join('') +
+        `</select>`;
+      const list = LIBRARY[e.group] || [];
+      const other = e.group && !e.libId;
+      const exSel = !e.group
+        ? `<select disabled aria-label="Άσκηση"><option>Πρώτα η ομάδα</option></select>`
+        : `<select data-f="lib" ${at} aria-label="Άσκηση ${ei + 1}">` +
+          list.map((x, k) => `<option value="${x.id}"${x.id === e.libId ? ' selected' : ''}>${k + 1}. ${esc(x.name)}</option>`).join('') +
+          `<option value=""${other ? ' selected' : ''}>Άλλη άσκηση…</option></select>`;
+      const custom = other
+        ? `<input type="text" class="bex-own" data-f="name" ${at} value="${esc(e.name)}" placeholder="Γράψε το όνομα της άσκησης" maxlength="60" aria-label="Όνομα άσκησης">`
+        : '';
+      const nums = e.group
+        ? `<div class="bex-nums">` +
+          `<label><span>Σετ</span><input type="number" inputmode="numeric" min="1" max="12" data-f="sets" ${at} value="${esc(e.sets)}"></label>` +
+          `<label><span>Επαναλ.</span><input type="text" inputmode="numeric" data-f="reps" ${at} value="${esc(e.reps)}" placeholder="8-12"></label>` +
+          `<label><span>Ξεκ. (δ)</span><input type="number" inputmode="numeric" min="15" max="600" step="15" data-f="rest" ${at} value="${esc(e.rest)}"></label>` +
+          `</div>`
+        : '';
+      return `<div class="bex">` +
+        `<div class="bex-top">${groupSel}` +
+        `<button type="button" class="icon-x" data-act="del-ex" ${at} aria-label="Αφαίρεσε την άσκηση">×</button></div>` +
+        exSel + custom + nums +
+        `</div>`;
+    }
+
     function renderBuilder() {
       const host = $('#builder-days');
-      const groups = [...new Set([...GROUPS, 'Άλλο'])];
-      const groupOpts = (cur) => `<option value="">Ομάδα</option>` +
-        groups.map((g) => `<option${g === cur ? ' selected' : ''}>${esc(g)}</option>`).join('');
       host.innerHTML = DRAFT.map((d, di) => {
         const head =
           `<div class="bday-head"><span class="bday-num">${di + 1}.</span>` +
@@ -10079,50 +10254,60 @@ function __bootWorkout() {
           return `<div class="bday">${head}<p class="bday-move">Μέρα χωρίς σετ: καταγράφεις μόνο διάρκεια και απόσταση.</p>` +
             `<div class="bday-foot"><span></span>${del}</div></div>`;
         }
-        const rows = d.exercises.map((e, ei) =>
-          `<div class="bex">` +
-          `<input type="text" class="bex-name" list="cat-names" data-f="name" data-d="${di}" data-e="${ei}" value="${esc(e.name)}" placeholder="Άσκηση" aria-label="Άσκηση ${ei + 1}" data-known="${!!e.catalogId}" style="grid-column: 1 / 4">` +
-          `<button type="button" class="icon-x" data-act="del-ex" data-d="${di}" data-e="${ei}" aria-label="Αφαίρεσε την άσκηση">×</button>` +
-          `<select data-f="group" data-d="${di}" data-e="${ei}" aria-label="Μυϊκή ομάδα">${groupOpts(e.group)}</select>` +
-          `<input type="number" inputmode="numeric" min="1" max="12" data-f="sets" data-d="${di}" data-e="${ei}" value="${esc(e.sets)}" aria-label="Σετ">` +
-          `<input type="text" inputmode="numeric" data-f="reps" data-d="${di}" data-e="${ei}" value="${esc(e.reps)}" placeholder="8-12" aria-label="Επαναλήψεις">` +
-          `<input type="number" inputmode="numeric" min="15" max="600" step="15" data-f="rest" data-d="${di}" data-e="${ei}" value="${esc(e.rest || restFor(e))}" aria-label="Ξεκούραση σε δευτερόλεπτα">` +
-          `</div>`
-        ).join('');
         return `<div class="bday">${head}` +
-          `<div class="bex bex-labels"><span>Ομάδα</span><span>Σετ</span><span>Επαναλ.</span><span>Ξεκ. (δ)</span></div>` +
-          rows +
+          d.exercises.map((e, ei) => exerciseRow(e, di, ei)).join('') +
           `<div class="bday-foot"><button type="button" class="add" data-act="add-ex" data-d="${di}">+ Άσκηση</button>${del}</div></div>`;
-      }).join('') +
-        `<datalist id="cat-names">${Object.values(CATALOG).map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>`;
+      }).join('');
       $('#builder-add-day').hidden = DRAFT.length >= MAX_CUSTOM_DAYS;
+    }
+
+    function refocus(di, ei, f) {
+      const el = $(`#builder-days [data-d="${di}"][data-e="${ei}"][data-f="${f}"]`);
+      if (el) el.focus();
     }
 
     on('#builder-days', 'input', (e) => {
       const t = e.target;
-      const d = DRAFT && DRAFT[Number(t.dataset.d)];
+      const di = Number(t.dataset.d);
+      const d = DRAFT && DRAFT[di];
       if (!d) return;
-      const ex = t.dataset.e != null ? d.exercises[Number(t.dataset.e)] : null;
+      const ei = t.dataset.e != null ? Number(t.dataset.e) : null;
+      const ex = ei != null ? d.exercises[ei] : null;
       const f = t.dataset.f;
       if (f === 'dname') d.name = t.value;
-      else if (f === 'kind') { d.kind = t.value; if (d.kind === 'lift' && !d.exercises.length) d.exercises.push(blankExercise()); renderBuilder(); }
-      else if (ex && f === 'name') {
-        ex.name = t.value;
-        ex.catalogId = catalogIdFor(t.value);
-        t.dataset.known = String(!!ex.catalogId);
-        if (ex.catalogId) {
-          ex.group = CATALOG[ex.catalogId].group;
-          const sel = t.parentElement.querySelector('select[data-f="group"]');
-          if (sel) sel.value = ex.group;
-        }
-        if (!ex.restTouched) {
-          const r = t.parentElement.querySelector('input[data-f="rest"]');
-          if (r) r.value = restFor(ex);
-        }
+      else if (f === 'kind') {
+        d.kind = t.value;
+        if (d.kind === 'lift' && !d.exercises.length) d.exercises.push(blankExercise());
+        renderBuilder();
       }
-      else if (ex && f === 'group') ex.group = t.value;
+      else if (ex && f === 'group') {
+        ex.group = t.value;
+        ex.libId = ex.group ? firstFree(ex.group, d, ex) : '';
+        ex.name = '';
+        ex.id = undefined;
+        ex.step = undefined;
+        ex.bodyweight = undefined;
+        ex.restTouched = false;
+        ex.repsTouched = false;
+        if (ex.group) applyDefaults(ex);
+        renderBuilder();
+        refocus(di, ei, ex.libId ? 'lib' : 'name');
+      }
+      else if (ex && f === 'lib') {
+        ex.libId = t.value;
+        ex.name = '';
+        ex.id = undefined;
+        ex.step = undefined;
+        ex.bodyweight = undefined;
+        ex.restTouched = false;
+        ex.repsTouched = false;
+        applyDefaults(ex);
+        renderBuilder();
+        refocus(di, ei, ex.libId ? 'lib' : 'name');
+      }
+      else if (ex && f === 'name') ex.name = t.value;
       else if (ex && f === 'sets') ex.sets = t.value;
-      else if (ex && f === 'reps') ex.reps = t.value;
+      else if (ex && f === 'reps') { ex.reps = t.value; ex.repsTouched = true; }
       else if (ex && f === 'rest') { ex.rest = t.value; ex.restTouched = true; }
     });
 
@@ -10131,14 +10316,21 @@ function __bootWorkout() {
       if (!b) return;
       const di = Number(b.dataset.d);
       const d = DRAFT[di];
-      if (b.dataset.act === 'add-ex') d.exercises.push(blankExercise());
+      if (b.dataset.act === 'add-ex') {
+        /* Η νέα άσκηση ξεκινά με την ομάδα της προηγούμενης, για γρηγορότερο γράψιμο. */
+        const prev = d.exercises[d.exercises.length - 1];
+        const ex = blankExercise();
+        if (prev && prev.group) {
+          ex.group = prev.group;
+          ex.libId = firstFree(ex.group, d, ex);
+          applyDefaults(ex);
+        }
+        d.exercises.push(ex);
+      }
       if (b.dataset.act === 'del-ex') d.exercises.splice(Number(b.dataset.e), 1);
       if (b.dataset.act === 'del-day') DRAFT.splice(di, 1);
       renderBuilder();
-      if (b.dataset.act === 'add-ex') {
-        const rows = $$(`.bex-name[data-d="${di}"]`);
-        if (rows.length) rows[rows.length - 1].focus();
-      }
+      if (b.dataset.act === 'add-ex') refocus(di, d.exercises.length - 1, 'group');
     });
 
     on('#builder-add-day', 'click', () => {
@@ -10148,8 +10340,7 @@ function __bootWorkout() {
     });
 
     on('#builder-back', 'click', () => {
-      if (state.plan.config.mode) { openSetup(true); return; }
-      openSetup(false);
+      openSetup(!!state.plan.config.mode);
     });
 
     on('#builder-save', 'click', () => {
@@ -10159,30 +10350,34 @@ function __bootWorkout() {
         const name = String(d.name || '').trim() || `Μέρα ${i + 1}`;
         if (d.kind !== 'lift') { days.push({ name, kind: d.kind, note: d.note || '' }); continue; }
         const used = new Set();
-        const exercises = d.exercises
-          .filter((e) => String(e.name || '').trim())
-          .map((e) => {
-            const [repMin, repMax] = parseReps(e.reps);
-            const cat = e.catalogId && CATALOG[e.catalogId] ? e.catalogId : catalogIdFor(e.name);
-            /* Η ίδια άσκηση του καταλόγου κρατάει το ίδιο id, ώστε να
-               συνεχίσει το ιστορικό της. Δεύτερη φορά στην ίδια μέρα
-               παίρνει καινούριο. */
-            let id = e.id || (cat && !used.has(cat) ? cat : uid());
-            if (used.has(id)) id = uid();
-            used.add(id);
-            return {
-              id, catalogId: cat || null,
-              name: String(e.name).trim().slice(0, 60),
-              group: e.group || (cat ? CATALOG[cat].group : 'Άλλο'),
-              sets: clamp(Math.round(Number(e.sets) || 3), 1, 12),
-              repMin, repMax,
-              rest: clamp(Math.round(Number(e.rest) || (cat ? ROLE_REST[CATALOG[cat].role] : 90)), 15, 600),
-              step: Number(e.step) || (cat ? CATALOG[cat].step : 2.5),
-              bodyweight: e.bodyweight != null ? !!e.bodyweight : !!(cat && CATALOG[cat].bodyweight)
-            };
+        const exercises = [];
+        for (const e of d.exercises) {
+          if (!e.group) continue;
+          const lib = LIB_BY_ID[e.libId] || null;
+          const exName = lib ? lib.name : String(e.name || '').trim();
+          if (!exName) continue;
+          const cat = lib ? (lib.c || null) : catalogIdFor(exName);
+          const base = CATALOG[cat] || {};
+          const def = libDefaults(e.group, lib);
+          const [repMin, repMax] = parseReps(e.reps || def.reps);
+          /* Η ίδια άσκηση κρατάει το ίδιο id, ώστε να συνεχίσει το
+             ιστορικό της. Δεύτερη φορά στην ίδια μέρα παίρνει καινούριο. */
+          let id = e.id || (lib ? lib.id : cat) || uid();
+          if (used.has(id)) id = uid();
+          used.add(id);
+          exercises.push({
+            id, libId: lib ? lib.id : null, catalogId: cat,
+            name: exName.slice(0, 60),
+            group: e.group,
+            sets: clamp(Math.round(Number(e.sets) || 3), 1, 12),
+            repMin, repMax,
+            rest: clamp(Math.round(Number(e.rest) || def.rest), 15, 600),
+            step: Number(e.step) || (lib ? lib.s : base.step) || 2.5,
+            bodyweight: e.bodyweight != null ? !!e.bodyweight : !!(lib ? lib.bw : base.bodyweight)
           });
+        }
         if (!exercises.length) {
-          setStatus($('#builder-status'), `Η μέρα «${esc(name)}» δεν έχει καμία άσκηση. Γράψε τουλάχιστον μία ή άλλαξε το είδος της.`, false);
+          setStatus($('#builder-status'), `Η μέρα «${esc(name)}» δεν έχει καμία άσκηση. Πρόσθεσε τουλάχιστον μία ή άλλαξε το είδος της.`, false);
           return;
         }
         days.push({ name, kind: 'lift', note: d.note || '', exercises });
@@ -10198,6 +10393,7 @@ function __bootWorkout() {
       state.plan.extras = {};
       finishSwitch('Αποθηκεύτηκε. Ακολουθείς το δικό σου πρόγραμμα.');
     });
+
 
     on('#choice-auto', 'click', chooseAuto);
     on('#choice-manual', 'click', () => {
