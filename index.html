@@ -1145,6 +1145,18 @@ body.mode-workout {
 }
 
 .swap .swap-hint { margin: 0 0 12px; }
+.bex.bex-inline { border-top: 0; padding: 0 0 12px; }
+.swap-more { margin-top: 4px; }
+.swap-more summary {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.swap-more[open] summary { margin-bottom: 8px; }
+.swap-more .field input { width: 100%; }
 
 .swap label.check {
   display: flex;
@@ -1813,7 +1825,8 @@ button.history-item:active { background: var(--accent-soft); }
   min-width: 34px;
   font-size: 15px;
 }
-.bday input, .bday select {
+.bday input, .bday select,
+.bex-inline input, .bex-inline select {
   min-height: 40px;
   padding: 8px 10px;
   border: 1px solid var(--rule);
@@ -1823,7 +1836,8 @@ button.history-item:active { background: var(--accent-soft); }
   font-variant-numeric: tabular-nums;
   min-width: 0;
 }
-.bday input:focus, .bday select:focus { outline: none; border-color: var(--accent); }
+.bday input:focus, .bday select:focus,
+.bex-inline input:focus, .bex-inline select:focus { outline: none; border-color: var(--accent); }
 .bday-head input { flex: 1; font-weight: 600; }
 .bday-head select { flex: 0 0 auto; }
 
@@ -7324,7 +7338,7 @@ function __bootWorkout() {
        plan.extras:    ασκήσεις που πρόσθεσες μόνος σου, ανά ημέρα
        Το id της θέσης δεν αλλάζει ποτέ, οπότε το ιστορικό μένει δεμένο μαζί της. */
 
-    const OVERRIDABLE = ['name', 'group', 'sets', 'repMin', 'repMax', 'rest', 'step', 'rir', 'bodyweight'];
+    const OVERRIDABLE = ['name', 'group', 'sets', 'repMin', 'repMax', 'rest', 'step', 'rir', 'bodyweight', 'note'];
 
     function blankPlan() {
       return { config: defaultConfig(), overrides: {}, extras: {} };
@@ -7381,7 +7395,11 @@ function __bootWorkout() {
 
     /* Η περιγραφή ανήκει στην άσκηση που έγραψε ο χρήστης. Αν την αλλάξει
        με άλλη από την Προπόνηση, η περιγραφή δεν ταιριάζει πια. */
-    const noteOf = (ex) => (ex.note && !(state.plan.overrides[ex.id] || {}).name ? ex.note : '');
+    const noteOf = (ex) => {
+      const o = state.plan.overrides[ex.id] || {};
+      if (o.note !== undefined) return o.note || '';
+      return ex.note && !o.name ? ex.note : '';
+    };
 
     function dayExercises(d, includeHidden = false) {
       const list = [
@@ -7821,7 +7839,7 @@ function __bootWorkout() {
           ? { hidden: true }
           : {};
         OVERRIDABLE.forEach((k) => {
-          const def = k === 'bodyweight' ? !!base[k] : base[k];
+          const def = k === 'bodyweight' ? !!base[k] : k === 'note' ? (base.note || '') : base[k];
           if (patch[k] !== undefined && String(patch[k]) !== String(def)) o[k] = patch[k];
         });
         if (Object.keys(o).length) state.plan.overrides[ex.id] = o;
@@ -7867,143 +7885,174 @@ function __bootWorkout() {
       const box = document.createElement('div');
       box.className = 'swap';
 
-      /* Καινούρια άσκηση: ξεκινάς από τη μυϊκή ομάδα, μετά η άσκηση. */
+      /* Ίδια φόρμα με τον συντάκτη προγράμματος: ομάδα → έτοιμη άσκηση
+         (ή «Άλλη») → σετ, επαναλήψεις, ξεκούραση, RIR, περιγραφή. */
       const isNew = !!ex.custom && ex.name === 'Νέα άσκηση';
-      const startGroup = isNew ? '' : ex.group;
-      const startName = isNew ? '' : ex.name;
-      const ALL_ALTS = Object.values(ALTERNATIVES).flat();
+      const f = {
+        group: isNew ? '' : (BUILDER_GROUPS.includes(ex.group) ? ex.group : 'Άλλο'),
+        libId: '',
+        name: isNew ? '' : ex.name,
+        sets: ex.sets,
+        reps: ex.repMin === ex.repMax ? String(ex.repMin) : `${ex.repMin}-${ex.repMax}`,
+        rest: ex.rest,
+        rir: ex.rir && ex.rir !== '—' ? ex.rir : '',
+        note: noteOf(ex),
+        step: ex.step,
+        bodyweight: !!ex.bodyweight
+      };
+      if (!isNew) {
+        const id = libFor(null, ex);
+        if (id && normName(LIB_BY_ID[id].name) === normName(ex.name)) f.libId = id;
+      }
+      let noteOpen = !!f.note;
 
-      /* Οι έτοιμες επιλογές μιας ομάδας. Το τρέχον όνομα μπαίνει μόνο
-         αν ανήκει σε αυτή την ομάδα, για να μη μπλέκονται ομάδες. */
-      function pickOptions(g, current) {
-        if (!g) return '<option value="">Πρώτα διάλεξε μυϊκή ομάδα</option>';
-        const list = ALTERNATIVES[g] || [];
-        const own = current && g === ex.group && current === ex.name && !isNew && !list.includes(current)
-          ? [current] : [];
-        const names = [...own, ...list];
-        const has = names.includes(current);
-        return `<option value=""${has ? '' : ' selected'}>— Διάλεξε άσκηση —</option>` +
-          names.map((n) => `<option${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('');
+      function readInputs() {
+        const v = (sel) => { const el = $(sel, box); return el ? el.value : undefined; };
+        if (v('[data-s="name"]') !== undefined) f.name = v('[data-s="name"]');
+        if (v('[data-s="sets"]') !== undefined) f.sets = v('[data-s="sets"]');
+        if (v('[data-s="reps"]') !== undefined) f.reps = v('[data-s="reps"]');
+        if (v('[data-s="rest"]') !== undefined) f.rest = v('[data-s="rest"]');
+        if (v('[data-s="rir"]') !== undefined) f.rir = v('[data-s="rir"]');
+        if (v('[data-s="note"]') !== undefined) f.note = v('[data-s="note"]');
+        if (v('#sw-step') !== undefined) f.step = v('#sw-step');
+        const bw = $('#sw-bw', box);
+        if (bw) f.bodyweight = bw.checked;
       }
 
-      box.innerHTML = `
-        <p class="swap-hint">Διάλεξε πρώτα μυϊκή ομάδα και μετά άσκηση από τη λίστα, ή γράψε ό,τι έχει το γυμναστήριό σου. Το ιστορικό της θέσης μένει, εκτός αν ζητήσεις καθαρό ξεκίνημα.</p>
-        <div class="field">
-          <label for="sw-group">1. Μυϊκή ομάδα</label>
-          <select id="sw-group">${startGroup ? '' : '<option value="" selected disabled>— Διάλεξε μυϊκή ομάδα —</option>'}${GROUPS.map(
-            (g) => `<option${g === startGroup ? ' selected' : ''}>${esc(g)}</option>`
-          ).join('')}</select>
-        </div>
-        <div class="field">
-          <label for="sw-pick">2. Άσκηση${startGroup ? ' — ' + esc(startGroup) : ''}</label>
-          <select id="sw-pick"${startGroup ? '' : ' disabled'}>${pickOptions(startGroup, startName)}</select>
-        </div>
-        <div class="field">
-          <label for="sw-name">Όνομα άσκησης</label>
-          <input id="sw-name" type="text" maxlength="60" value="${esc(startName)}" placeholder="ή γράψε δικό σου όνομα">
-        </div>
-        <div class="field-pair">
-          <div class="field">
-            <label for="sw-sets">Σετ</label>
-            <input id="sw-sets" type="number" inputmode="numeric" min="1" max="8" step="1" value="${ex.sets}">
-          </div>
-          <div class="field">
-            <label for="sw-rest">Ξεκούραση (δευτ.)</label>
-            <input id="sw-rest" type="number" inputmode="numeric" min="15" max="600" step="15" value="${ex.rest}">
-          </div>
-        </div>
-        <div class="field-pair">
-          <div class="field">
-            <label for="sw-min">Επαναλήψεις από</label>
-            <input id="sw-min" type="number" inputmode="numeric" min="1" max="60" step="1" value="${ex.repMin}">
-          </div>
-          <div class="field">
-            <label for="sw-max">έως</label>
-            <input id="sw-max" type="number" inputmode="numeric" min="1" max="60" step="1" value="${ex.repMax}">
-          </div>
-        </div>
-        <div class="field">
-          <label for="sw-step">Βήμα βάρους (kg)</label>
-          <input id="sw-step" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" value="${ex.step}">
-        </div>
-        <label class="check"><input type="checkbox" id="sw-bw"${ex.bodyweight ? ' checked' : ''}>
-          Με το βάρος του σώματος — τα κιλά μετράνε ως επιπλέον επιβάρυνση</label>
-        <label class="check"><input type="checkbox" id="sw-fresh">
-          Καθαρό ξεκίνημα — σβήσε τα προηγούμενα σετ αυτής της θέσης</label>
-        <div class="editor-actions">
-          <button class="btn btn-primary" type="button" data-apply>Αποθήκευση</button>
-          <button class="btn btn-quiet" type="button" data-cancel>Άκυρο</button>
-        </div>
-        <div class="btn-row">
-          ${ex.changed && !ex.custom ? '<button class="btn btn-quiet" type="button" data-restore>Επαναφορά αρχικής</button>' : ''}
-          <button class="btn btn-danger" type="button" data-remove>Αφαίρεσε από την ημέρα</button>
-        </div>`;
+      function setLib(libId) {
+        f.libId = libId;
+        const lib = LIB_BY_ID[libId];
+        const def = libDefaults(f.group, lib);
+        f.rest = def.rest;
+        f.reps = def.reps;
+        f.rir = def.rir;
+        f.name = '';
+        if (lib) { f.step = lib.s; f.bodyweight = !!lib.bw; }
+      }
 
-      const pick = $('#sw-pick', box);
-      const name = $('#sw-name', box);
-      const group = $('#sw-group', box);
+      function render() {
+        const list = LIBRARY[f.group] || [];
+        const other = f.group && !f.libId;
+        box.innerHTML =
+          `<div class="bex bex-inline">` +
+          `<select data-s="group" aria-label="Μυϊκή ομάδα"><option value="">Διάλεξε ομάδα</option>` +
+          BUILDER_GROUPS.map((g) => `<option${g === f.group ? ' selected' : ''}>${esc(g)}</option>`).join('') +
+          `</select>` +
+          (!f.group
+            ? `<select disabled aria-label="Άσκηση"><option>Πρώτα η ομάδα</option></select>`
+            : `<select data-s="lib" aria-label="Άσκηση">` +
+              list.map((x, k) => `<option value="${x.id}"${x.id === f.libId ? ' selected' : ''}>${k + 1}. ${esc(x.name)}</option>`).join('') +
+              `<option value=""${other ? ' selected' : ''}>Άλλη άσκηση…</option></select>`) +
+          (other
+            ? `<input type="text" class="bex-own" data-s="name" value="${esc(f.name)}" placeholder="Γράψε το όνομα της άσκησης" maxlength="60" aria-label="Όνομα άσκησης">`
+            : '') +
+          (f.group
+            ? `<div class="bex-nums">` +
+              `<label><span>Σετ</span><input type="number" inputmode="numeric" min="1" max="12" data-s="sets" value="${esc(f.sets)}"></label>` +
+              `<label><span>Επαναλ.</span><input type="text" inputmode="numeric" data-s="reps" value="${esc(f.reps)}" placeholder="8-12"></label>` +
+              `<label><span>Ξεκ. (δ)</span><input type="number" inputmode="numeric" min="15" max="600" step="15" data-s="rest" value="${esc(f.rest)}"></label>` +
+              `<label><span>RIR</span><input type="text" inputmode="numeric" data-s="rir" value="${esc(f.rir)}" placeholder="—" maxlength="5"></label>` +
+              `</div>` +
+              (noteOpen
+                ? `<label class="bex-note"><span>Περιγραφή</span><textarea data-s="note" rows="2" maxlength="300" placeholder="π.χ. αργά στην κατάβαση, λαβή στο πλάτος των ώμων">${esc(f.note)}</textarea></label>`
+                : `<button type="button" class="bex-add-note" data-add-note>+ Περιγραφή</button>`) +
+              `<details class="swap-more"><summary>Περισσότερες ρυθμίσεις</summary>` +
+              `<div class="field"><label for="sw-step">Βήμα βάρους (kg)</label>` +
+              `<input id="sw-step" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" value="${esc(f.step)}"></div>` +
+              `<label class="check"><input type="checkbox" id="sw-bw"${f.bodyweight ? ' checked' : ''}>` +
+              ` Με το βάρος του σώματος — τα κιλά μετράνε ως επιπλέον επιβάρυνση</label>` +
+              `<label class="check"><input type="checkbox" id="sw-fresh"> Καθαρό ξεκίνημα — σβήσε τα προηγούμενα σετ αυτής της θέσης</label>` +
+              `</details>`
+            : '') +
+          `</div>` +
+          `<div class="editor-actions">` +
+          `<button class="btn btn-primary" type="button" data-apply>Αποθήκευση</button>` +
+          `<button class="btn btn-quiet" type="button" data-cancel>Άκυρο</button></div>` +
+          `<div class="btn-row">` +
+          (ex.changed && !ex.custom ? '<button class="btn btn-quiet" type="button" data-restore>Επαναφορά αρχικής</button>' : '') +
+          `<button class="btn btn-danger" type="button" data-remove>Αφαίρεσε από την ημέρα</button></div>`;
+      }
 
-      pick.addEventListener('change', () => { if (pick.value) name.value = pick.value; });
-
-      /* Αλλάζοντας ομάδα, αλλάζει η λίστα. Αν το όνομα ήταν έτοιμη επιλογή
-         άλλης ομάδας, καθαρίζει. Ό,τι έγραψες μόνος σου μένει. */
-      group.addEventListener('change', () => {
-        const list = ALTERNATIVES[group.value] || [];
-        if (ALL_ALTS.includes(name.value) && !list.includes(name.value)) name.value = '';
-        pick.innerHTML = pickOptions(group.value, name.value);
-        pick.disabled = !group.value;
-        $('label[for="sw-pick"]', box).textContent = '2. Άσκηση — ' + group.value;
+      box.addEventListener('change', (e) => {
+        const s = e.target.dataset.s;
+        if (s !== 'group' && s !== 'lib') return;
+        readInputs();
+        if (s === 'group') {
+          f.group = e.target.value;
+          if (f.group) {
+            const day = { exercises: dayExercises(ex.day).filter((x) => x.id !== ex.id).map((x) => ({ libId: libFor(null, x) })) };
+            setLib(firstFree(f.group, day, null));
+          } else {
+            f.libId = '';
+          }
+        } else {
+          setLib(e.target.value);
+        }
+        render();
+        const next = $(f.libId ? '[data-s="lib"]' : '[data-s="name"]', box);
+        if (next) next.focus();
       });
 
-      $('[data-cancel]', box).addEventListener('click', () => {
-        state.swapping = null;
-        renderTrain();
-      });
-
-      $('[data-apply]', box).addEventListener('click', () => {
-        if (!group.value) { group.focus(); return; }
-        const finalName = name.value.trim();
-        if (!finalName) { (pick.value ? name : pick).focus(); return; }
-
-        let lo = clamp(Math.round(Number($('#sw-min', box).value) || ex.repMin), 1, 60);
-        let hi = clamp(Math.round(Number($('#sw-max', box).value) || ex.repMax), 1, 60);
-        if (lo > hi) [lo, hi] = [hi, lo];
-
-        const patch = {
-          name: finalName,
-          group: group.value,
-          sets: clamp(Math.round(Number($('#sw-sets', box).value) || ex.sets), 1, 8),
-          repMin: lo,
-          repMax: hi,
-          step: clamp(Number($('#sw-step', box).value) || ex.step, 0.5, 20),
-          rest: clamp(Math.round(Number($('#sw-rest', box).value) || ex.rest), 15, 600),
-          bodyweight: $('#sw-bw', box).checked
-        };
-
-        if ($('#sw-fresh', box).checked) wipeExercise(ex.id);
-        applyPatch(ex, patch);
-        state.swapping = null;
-        renderAll();
-      });
-
-      const restore = $('[data-restore]', box);
-      if (restore) {
-        restore.addEventListener('click', () => {
+      box.addEventListener('click', (e) => {
+        const t = e.target;
+        if (t.closest('[data-add-note]')) {
+          readInputs();
+          noteOpen = true;
+          render();
+          const n = $('[data-s="note"]', box);
+          if (n) n.focus();
+          return;
+        }
+        if (t.closest('[data-cancel]')) {
+          state.swapping = null;
+          renderTrain();
+          return;
+        }
+        if (t.closest('[data-apply]')) {
+          readInputs();
+          const groupSel = $('[data-s="group"]', box);
+          if (!f.group) { groupSel.focus(); return; }
+          const lib = LIB_BY_ID[f.libId] || null;
+          const finalName = lib ? lib.name : String(f.name || '').trim();
+          if (!finalName) { const n = $('[data-s="name"]', box); if (n) n.focus(); return; }
+          const def = libDefaults(f.group, lib);
+          const [lo, hi] = parseReps(f.reps || def.reps);
+          const patch = {
+            name: finalName.slice(0, 60),
+            group: f.group,
+            sets: clamp(Math.round(Number(f.sets) || ex.sets), 1, 12),
+            repMin: lo,
+            repMax: hi,
+            rest: clamp(Math.round(Number(f.rest) || def.rest), 15, 600),
+            rir: normRir(f.rir),
+            note: String(f.note || '').trim().slice(0, 300),
+            step: clamp(Number(f.step) || ex.step || 2.5, 0.5, 20),
+            bodyweight: !!f.bodyweight
+          };
+          const fresh = $('#sw-fresh', box);
+          if (fresh && fresh.checked) wipeExercise(ex.id);
+          applyPatch(ex, patch);
+          state.swapping = null;
+          renderAll();
+          return;
+        }
+        if (t.closest('[data-restore]')) {
           delete state.plan.overrides[ex.id];
           savePlan();
           state.swapping = null;
           renderAll();
-        });
-      }
-
-      $('[data-remove]', box).addEventListener('click', () => {
-        if (!confirm('Θα φύγει από την ημέρα. Τα δεδομένα της μένουν αποθηκευμένα και επιστρέφουν αν την ξαναβάλεις από τις Ρυθμίσεις.')) return;
-        hideExercise(ex.id);
-        state.swapping = null;
-        renderAll();
+          return;
+        }
+        if (t.closest('[data-remove]')) {
+          if (!confirm('Θα φύγει από την ημέρα. Τα δεδομένα της μένουν αποθηκευμένα.')) return;
+          hideExercise(ex.id);
+          state.swapping = null;
+          renderAll();
+        }
       });
 
-      if (!isNew) setTimeout(() => name.focus({ preventScroll: true }), 30);
+      render();
+      if (isNew) setTimeout(() => { const g = $('[data-s="group"]', box); if (g) g.focus({ preventScroll: true }); }, 30);
       return box;
     }
 
