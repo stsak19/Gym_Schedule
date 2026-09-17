@@ -1706,9 +1706,8 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
             const people = s.people || [];
             const present = people.filter((p) => p.status === "checked_in").length;
             const expanded = open === s.slot_time;
-            const opensAt = s.checkin_opens_at ? new Date(s.checkin_opens_at) : null;
-            const tooEarly = !!opensAt && nowMs < opensAt.getTime();
-            const opensLabel = opensAt ? `${pad2(opensAt.getHours())}:${pad2(opensAt.getMinutes())}` : "";
+            /* Ο διαχειριστής κάνει check-in όποτε θέλει: και πριν ανοίξει
+               η ώρα, και την επόμενη μέρα για χθεσινή κράτηση. */
             return (
               <div key={s.slot_time}>
                 <button onClick={() => toggleSlot(s.slot_time)}
@@ -1746,13 +1745,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                 )}
                               </div>
                               <div className="f-mono text-[12px] text-neutral-500">{p.phone}</div>
-                              {p.status !== "checked_in" && tooEarly && (
-                                <div className="f-text text-[12px] text-neutral-500">Check-in από τις {opensLabel}</div>
-                              )}
                             </div>
                             <div className="flex shrink-0 gap-2">
                               <Button size="sm" variant={p.status === "checked_in" ? "outline" : "primary"}
-                                disabled={p.status !== "checked_in" && tooEarly}
                                 onClick={() => setStatus(p.booking_id, p.status === "checked_in" ? "booked" : "checked_in")}>
                                 {p.status === "checked_in" ? "Αναίρεση" : "Check-in"}
                               </Button>
