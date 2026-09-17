@@ -1784,9 +1784,6 @@ button.history-item:active { background: var(--accent-soft); }
 .choice h3 { font-family: var(--display); font-size: 21px; margin: 0; color: var(--ink); }
 .choice p { margin: 0; color: #a9a9a9; font-size: 14px; line-height: 1.5; }
 
-.file-btn { display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.file-btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
-
 .link-back[hidden] { display: none; }
 .link-back {
   display: block;
@@ -1872,19 +1869,6 @@ button.history-item:active { background: var(--accent-soft); }
 .plan-mode-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .plan-mode-row .btn { flex: 1 1 140px; }
 
-.busy::after {
-  content: '';
-  display: inline-block;
-  width: 12px; height: 12px;
-  margin-left: 8px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin .8s linear infinite;
-  vertical-align: -2px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .busy::after { animation: none; } }
 </style>
 <style>
 /* ── Ο διακόπτης ανάμεσα στις δύο εφαρμογές ──────────────────────
@@ -5308,13 +5292,8 @@ loadAppSettings().then(() => {
 
       <div class="choice" data-kind="custom">
         <h3>Το δικό μου πρόγραμμα</h3>
-        <p>Ανέβασε το πρόγραμμα του γυμναστή σου (PDF, Word, Excel, φωτογραφία) ή γράψ' το μόνος σου.</p>
-        <label class="btn btn-primary btn-block file-btn" id="choice-upload-label">
-          <input type="file" id="choice-upload" class="sr-only">
-          Ανέβασε αρχείο
-        </label>
+        <p>Γράψε τις μέρες και τις ασκήσεις σου, π.χ. αυτές που σου έδωσε ο γυμναστής σου.</p>
         <button type="button" class="btn btn-quiet btn-block" id="choice-manual">Γράψ' το μόνος μου</button>
-        <div id="upload-status"></div>
       </div>
 
       <button type="button" class="link-back" id="choice-cancel" hidden>Άκυρο, κράτα το τωρινό</button>
@@ -7208,7 +7187,7 @@ function __bootWorkout() {
       };
     }
 
-    return { CLIENT_URL, readClientSession, clientName, fetchBrand, fetchGoals, SUPABASE_URL, SUPABASE_ANON_KEY };
+    return { CLIENT_URL, readClientSession, clientName, fetchBrand, fetchGoals };
   })();
 
 
@@ -7225,9 +7204,7 @@ function __bootWorkout() {
       GOAL_LABELS, configFromGoals, autoMix
     } = __data;
     const { lineChart, barRow } = __charts;
-    const { fetchBrand, fetchGoals, CLIENT_URL, readClientSession } = __link;
-    const FN_URL = __link.SUPABASE_URL + '/functions/v1/parse-program';
-    const FN_KEY = __link.SUPABASE_ANON_KEY;
+    const { fetchBrand, fetchGoals, CLIENT_URL } = __link;
 
     /* Το πρόγραμμα φτιάχνεται στην εκκίνηση από τις ρυθμίσεις και
        ξαναφτιάχνεται όποτε αλλάξουν. Μέχρι τότε είναι άδειο. */
@@ -9897,7 +9874,6 @@ function __bootWorkout() {
        extras) φυλάγονται στο plan.autoTweaks και γυρνάνε αν επιστρέψεις. */
 
     const MAX_CUSTOM_DAYS = 7;
-    const MAX_UPLOAD_MB = 15;
     const KIND_LABEL = { lift: 'Βάρη', cardio: 'Καρντιό', walk: 'Περπάτημα' };
     const ROLE_REST = { main: 150, aux: 120, iso: 75 };
 
@@ -9988,7 +9964,6 @@ function __bootWorkout() {
       $('#plan-choice').hidden = false;
       $('#plan-builder').hidden = true;
       $('#choice-cancel').hidden = !canCancel;
-      $('#upload-status').innerHTML = '';
       renderChoiceText();
       $('#plan-setup').scrollTop = 0;
     }
@@ -10068,7 +10043,6 @@ function __bootWorkout() {
           })
         };
       });
-      draft.source = state.plan.custom.source;
       return draft;
     }
 
@@ -10207,172 +10181,11 @@ function __bootWorkout() {
         return;
       }
       stashAutoTweaks();
-      state.plan.custom = { days, source: DRAFT.source || 'manual', updated: today() };
+      state.plan.custom = { days, source: 'manual', updated: today() };
       state.plan.config = { ...state.plan.config, mode: 'custom' };
       state.plan.overrides = {};
       state.plan.extras = {};
       finishSwitch('Αποθηκεύτηκε. Ακολουθείς το δικό σου πρόγραμμα.');
-    });
-
-    /* ---- Ανέβασμα αρχείου ---- */
-
-    const loadedScripts = {};
-    function loadScript(src) {
-      if (!loadedScripts[src]) {
-        loadedScripts[src] = new Promise((res, rej) => {
-          const s = document.createElement('script');
-          s.src = src;
-          s.onload = res;
-          s.onerror = () => { delete loadedScripts[src]; rej(new Error('Δεν φόρτωσε ο αναγνώστης αρχείων. Έλεγξε τη σύνδεσή σου.')); };
-          document.head.appendChild(s);
-        });
-      }
-      return loadedScripts[src];
-    }
-
-    const toBase64 = (blob) => new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result).split(',')[1]);
-      r.onerror = () => rej(new Error('Δεν διαβάστηκε το αρχείο.'));
-      r.readAsDataURL(blob);
-    });
-
-    /* Οι φωτογραφίες κινητού είναι μεγάλες· τις μικραίνουμε πριν φύγουν. */
-    async function shrinkImage(file) {
-      const url = URL.createObjectURL(file);
-      try {
-        const img = await new Promise((res, rej) => {
-          const i = new Image();
-          i.onload = () => res(i);
-          i.onerror = () => rej(new Error('Η εικόνα δεν ανοίγει. Στείλ\' τη ως JPG ή PNG.'));
-          i.src = url;
-        });
-        const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.naturalWidth * k);
-        c.height = Math.round(img.naturalHeight * k);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
-        return { media_type: 'image/jpeg', data: await toBase64(blob) };
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    }
-
-    const UNSUPPORTED = 'Αυτό το αρχείο δεν διαβάζεται. Στείλε PDF, Word (.docx), Excel, κείμενο ή φωτογραφία.';
-
-    async function readForAI(file) {
-      if (file.size > MAX_UPLOAD_MB * 1024 * 1024) throw new Error(`Το αρχείο είναι πάνω από ${MAX_UPLOAD_MB} MB.`);
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      const type = file.type || '';
-
-      if (type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
-        return { file: await shrinkImage(file) };
-      }
-      if (type === 'application/pdf' || ext === 'pdf') {
-        return { file: { media_type: 'application/pdf', data: await toBase64(file) } };
-      }
-      if (['xlsx', 'xlsm', 'xls', 'ods'].includes(ext)) {
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
-        const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
-        return { text: wb.SheetNames.map((n) => `# ${n}\n` + window.XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n') };
-      }
-      if (ext === 'docx') {
-        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
-        const out = await window.mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-        return { text: out.value };
-      }
-      if (['doc', 'pages', 'numbers', 'key', 'ppt', 'pptx'].includes(ext)) {
-        throw new Error('Αυτή η μορφή δεν διαβάζεται. Αποθήκευσέ το ως PDF και ξαναδοκίμασε.');
-      }
-      /* Ό,τι άλλο: το δοκιμάζουμε σαν κείμενο και βλέπουμε αν βγάζει νόημα. */
-      const text = await file.text();
-      const bad = (text.match(/[\u0000\uFFFD]/g) || []).length;
-      if (!text.trim() || bad > text.length * 0.02) throw new Error(UNSUPPORTED);
-      return { text };
-    }
-
-    async function parseWithAI(payload) {
-      const session = readClientSession ? readClientSession() : null;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 90000);
-      try {
-        const res = await fetch(FN_URL, {
-          method: 'POST',
-          signal: ctrl.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: FN_KEY,
-            Authorization: 'Bearer ' + FN_KEY
-          },
-          body: JSON.stringify({
-            client_id: session ? session.clientId : null,
-            ...payload,
-            text: payload.text ? payload.text.slice(0, 60000) : undefined,
-            catalog: Object.keys(CATALOG).map((id) => ({ id, name: CATALOG[id].name, group: CATALOG[id].group })),
-            groups: GROUPS
-          })
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data) throw new Error((data && data.error) || 'Η ανάγνωση απέτυχε. Δοκίμασε ξανά σε λίγο.');
-        return data;
-      } catch (e) {
-        if (e.name === 'AbortError') throw new Error('Άργησε πολύ. Δοκίμασε ξανά ή με μικρότερο αρχείο.');
-        throw e;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-
-    function draftFromAI(data) {
-      const days = Array.isArray(data.days) ? data.days.slice(0, MAX_CUSTOM_DAYS) : [];
-      return days.map((d, i) => {
-        const kind = KIND_LABEL[d.type] ? d.type : 'lift';
-        return {
-          name: String(d.name || `Μέρα ${i + 1}`).slice(0, 40),
-          kind,
-          note: String(d.note || '').slice(0, 200),
-          exercises: (Array.isArray(d.exercises) ? d.exercises : []).map((e) => {
-            const cat = e.catalog_id && CATALOG[e.catalog_id] ? e.catalog_id : catalogIdFor(e.name);
-            const min = Number(e.reps_min) || 0, max = Number(e.reps_max) || min;
-            return {
-              name: String(e.name || (cat ? CATALOG[cat].name : '')).slice(0, 60),
-              group: cat ? CATALOG[cat].group : (GROUPS.includes(e.group) ? e.group : 'Άλλο'),
-              sets: Number(e.sets) || 3,
-              reps: min ? (min === max ? String(min) : `${min}-${max}`) : '8-12',
-              rest: Number(e.rest_seconds) || null,
-              catalogId: cat || null
-            };
-          }).filter((e) => e.name)
-        };
-      });
-    }
-
-    on('#choice-upload', 'change', async (e) => {
-      const input = e.target;
-      const file = input.files && input.files[0];
-      input.value = '';
-      if (!file) return;
-      const label = $('#choice-upload-label');
-      const status = $('#upload-status');
-      label.setAttribute('aria-disabled', 'true');
-      label.classList.add('busy');
-      status.innerHTML = `<div class="status ok">Διαβάζω το «${esc(file.name)}». Μπορεί να πάρει μισό λεπτό.</div>`;
-      try {
-        const payload = await readForAI(file);
-        const data = await parseWithAI(payload);
-        const draft = draftFromAI(data);
-        if (!draft.length) throw new Error('Δεν βρήκα πρόγραμμα προπόνησης σε αυτό το αρχείο. Δοκίμασε άλλο ή γράψ\' το μόνος σου.');
-        draft.source = 'upload';
-        status.innerHTML = '';
-        openBuilder(draft,
-          `Διάβασα το «${file.name}». Έλεγξε ότι όλα βγήκαν σωστά και διόρθωσε ό,τι χρειάζεται πριν το αποθηκεύσεις.`);
-      } catch (err) {
-        setStatus(status, esc(err.message || UNSUPPORTED), false);
-      } finally {
-        label.removeAttribute('aria-disabled');
-        label.classList.remove('busy');
-      }
     });
 
     on('#choice-auto', 'click', chooseAuto);
@@ -10391,7 +10204,7 @@ function __bootWorkout() {
       host.innerHTML =
         `<h3>${own ? 'Δικό σου πρόγραμμα' : 'Πρόγραμμα της εφαρμογής'}</h3>` +
         `<p class="hint">${own
-          ? `${n} ${n === 1 ? 'μέρα' : 'μέρες'} την εβδομάδα${state.plan.custom.source === 'upload' ? ', από αρχείο που ανέβασες' : ''}.`
+          ? `${n} ${n === 1 ? 'μέρα' : 'μέρες'} την εβδομάδα, όπως το έγραψες.`
           : 'Ακολουθεί τον στόχο σου από τις κρατήσεις.'}</p>` +
         `<div class="plan-mode-row">` +
         (own ? `<button type="button" class="btn btn-quiet" data-act="edit">Επεξεργασία</button>` : '') +
