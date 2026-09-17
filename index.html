@@ -1793,11 +1793,55 @@ button.history-item:active { background: var(--accent-soft); }
   display: grid;
   gap: 10px;
 }
-.choice[data-kind="auto"] { border-left-color: var(--accent); }
+.choice[data-kind="ask"] { border-left-color: var(--accent); }
 .choice[data-kind="trainer"] { border-left-color: var(--accent); background: var(--accent-soft, var(--surface)); }
-.setup[data-trainer="true"] .choice[data-kind="auto"] { border-left-color: var(--dim); }
 .choice h3 { font-family: var(--display); font-size: 21px; margin: 0; color: var(--ink); }
 .choice p { margin: 0; color: #a9a9a9; font-size: 14px; line-height: 1.5; white-space: pre-line; }
+
+/* ---------- Στόχοι ---------- */
+.goal-card h3 { margin: 0 0 6px; }
+.goal-card .hint { margin: 0 0 14px; }
+.goal-form-head {
+  font-family: var(--display); font-size: 17px; color: var(--ink);
+  margin: 22px 0 4px;
+}
+.goal-opt {
+  display: flex; align-items: flex-start; gap: 12px;
+  width: 100%; padding: 10px 0; text-align: left;
+  background: none; border: 0; color: var(--ink); cursor: pointer;
+}
+.goal-opt .dot {
+  margin-top: 2px; flex: 0 0 auto;
+  width: 19px; height: 19px; border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  display: flex; align-items: center; justify-content: center;
+}
+.goal-opt[aria-pressed="true"] .dot { background: var(--accent); border-color: var(--accent); }
+.goal-opt[aria-pressed="true"] .dot::after {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: #0C0C0C;
+}
+.goal-opt .label { font-size: 16px; line-height: 1.35; }
+.goal-opt[aria-pressed="true"] .label { font-weight: 700; }
+.goal-opt-desc {
+  margin: 0 0 10px 31px; color: var(--muted);
+  font-size: 14px; line-height: 1.5;
+}
+
+/* ---------- Το μήνυμα στο τέλος της προπόνησης ---------- */
+.done-wrap {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(0, 0, 0, 0.72);
+}
+.done-wrap[hidden] { display: none; }
+.done-box {
+  width: 100%; max-width: 340px; text-align: center;
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: var(--radius); padding: 28px 22px 22px;
+}
+.done-emoji { font-size: 46px; line-height: 1; }
+.done-title { font-family: var(--display); font-size: 22px; margin: 14px 0 6px; color: var(--ink); }
+.done-text { margin: 0 0 18px; color: var(--muted); font-size: 14.5px; line-height: 1.5; }
 
 .link-back[hidden] { display: none; }
 .link-back {
@@ -3356,8 +3400,7 @@ function SettingsTab({ session, flash, theme, setTheme, onLogout, onAccountDelet
         </p>
       </div>
 
-      <GoalsPanel session={session} flash={flash} onGoalsChange={onGoalsChange}
-        workoutOn={workoutOn} setWorkoutOn={setWorkoutOn} />
+      <GoalsPanel workoutOn={workoutOn} setWorkoutOn={setWorkoutOn} />
 
       <PushPanel session={session} flash={flash} />
 
@@ -3383,74 +3426,11 @@ function SettingsTab({ session, flash, theme, setTheme, onLogout, onAccountDelet
   );
 }
 
-/* Οι στόχοι του πελάτη.
-   Διαλέγει όσους θέλει από τη λίστα και γράφει και δικούς του, για
-   ό,τι δεν έχουμε προβλέψει. Τα κρατάει η βάση, οπότε τα βλέπει και
-   η διαχείριση και το καρνέ προπόνησης — μία πηγή, τρεις οθόνες. */
-function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) {
-  const [primary, setPrimary] = useState("");
-  const [level, setLevel] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [saved, setSaved] = useState("");
-  const [savedLevel, setSavedLevel] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data, error } = await sb.rpc("my_goals", { p_client_id: session.clientId });
-      if (!alive) return;
-      if (!error && data) {
-        const p = typeof data.primary === "string" ? data.primary : "";
-        const lv = LEVEL_LABELS[data.level] ? data.level : "";
-        setPrimary(p);
-        setSaved(p);
-        setLevel(lv);
-        setSavedLevel(lv);
-        setOpen(!p || !lv);
-      } else {
-        setOpen(true);
-      }
-      setLoaded(true);
-    })();
-    return () => { alive = false; };
-  }, [session.clientId]);
-
-  /* Το πάτημα μόνο διαλέγει και δείχνει την περιγραφή. Αποθηκεύεται
-     με το κουμπί. Οι παλιοί δευτερεύοντες και δικοί στόχοι δεν υπάρχουν
-     πια στην οθόνη, οπότε καθαρίζουν. */
-  const choose = (k) => { if (!saving) setPrimary(k); };
-  const chooseLevel = (k) => { if (!saving) setLevel(k); };
-  const dirty = primary !== saved || level !== savedLevel;
-
-  const save = async () => {
-    if (!primary || !level || saving) return;
-    setSaving(true);
-    const { data, error } = await sb.rpc("save_goals", {
-      p_client_id: session.clientId,
-      p_goals: [],
-      p_custom: [],
-      p_primary: primary,
-      p_level: level,
-    });
-    setSaving(false);
-    if (error || !data || data.ok !== true) {
-      flash((data && data.error) || "Δεν αποθηκεύτηκε");
-      return;
-    }
-    const p = typeof data.primary === "string" ? data.primary : primary;
-    const lv = LEVEL_LABELS[data.level] ? data.level : level;
-    setPrimary(p);
-    setSaved(p);
-    setLevel(lv);
-    setSavedLevel(lv);
-    setOpen(false);
-    if (window.__workoutReloadGoals) window.__workoutReloadGoals();
-    if (onGoalsChange) onGoalsChange(!!p);
-    flash("Αποθηκεύτηκε");
-  };
-
+/* Το κουτί «Πρόγραμμα γυμναστικής» στις Ρυθμίσεις.
+   Μόνο τίτλος και διακόπτης: με το που ανοίξει, εμφανίζεται ο κεραυνός
+   στην κεφαλίδα και ο πελάτης μπαίνει στο καρνέ. Ο στόχος και το
+   επίπεδο δηλώνονται πια μέσα στο καρνέ, στην καρτέλα Στόχοι. */
+function GoalsPanel({ workoutOn, setWorkoutOn }) {
   return (
     <div className="mt-10 border border-black p-4">
       <div className="flex items-center justify-between gap-3">
@@ -3464,108 +3444,6 @@ function GoalsPanel({ session, flash, onGoalsChange, workoutOn, setWorkoutOn }) 
             workoutOn ? "left-[23px] bg-white" : "left-[3px] bg-black"}`} />
         </button>
       </div>
-
-      {workoutOn && (
-        !loaded ? (
-          <div className="f-text py-6 text-[13px] text-neutral-400">Φόρτωση…</div>
-        ) : (
-          <>
-            {open ? (
-              <div className="mt-4">
-                <p className="f-text text-[13px] leading-relaxed text-neutral-600">
-                  Διάλεξε το είδος της προπόνησής σου. Από αυτό φτιάχνεται το πρόγραμμά σου.
-                </p>
-                <div className="mt-2 flex flex-col">
-                  {PRIMARY_GOALS.map((g) => {
-                    const on = primary === g.key;
-                    return (
-                      <div key={g.key}>
-                        <button type="button" disabled={saving} onClick={() => choose(g.key)}
-                          className="flex w-full items-start gap-3 py-2 text-left">
-                          <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black ${
-                            on ? "bg-black" : "bg-white"}`}>
-                            {on && <span className="h-[7px] w-[7px] rounded-full bg-white" />}
-                          </span>
-                          <span className={`f-text text-[16px] leading-snug ${on ? "font-bold" : ""}`}>{g.label}</span>
-                        </button>
-                        {on && (
-                          <p className="f-text mb-2 ml-8 text-[14px] leading-relaxed text-neutral-600">{g.desc}</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-5 border-t border-neutral-300 pt-4">
-                  <div className="f-display text-[13px] font-bold uppercase tracking-wide">Επίπεδο</div>
-                  <p className="f-text mt-1 text-[13px] leading-relaxed text-neutral-600">
-                    Πόση εμπειρία έχεις με τα βάρη; Από αυτό αλλάζουν τα σετ, οι επαναλήψεις και η ένταση.
-                  </p>
-                  <div className="mt-2 flex flex-col">
-                    {LEVEL_GOALS.map((g) => {
-                      const on = level === g.key;
-                      return (
-                        <div key={g.key}>
-                          <button type="button" disabled={saving} onClick={() => chooseLevel(g.key)}
-                            className="flex w-full items-start gap-3 py-2 text-left">
-                            <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black ${
-                              on ? "bg-black" : "bg-white"}`}>
-                              {on && <span className="h-[7px] w-[7px] rounded-full bg-white" />}
-                            </span>
-                            <span className={`f-text text-[16px] leading-snug ${on ? "font-bold" : ""}`}>{g.label}</span>
-                          </button>
-                          {on && (
-                            <p className="f-text mb-2 ml-8 text-[14px] leading-relaxed text-neutral-600">{g.desc}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <Button size="lg" className="mt-3" disabled={!primary || !level || saving || !dirty} onClick={save}>
-                  {saving ? "Αποθήκευση…" : primary && level && !dirty ? "Αποθηκευμένο" : "Αποθήκευση"}
-                </Button>
-                {!level && primary && (
-                  <p className="f-text mt-2 text-[13px] text-neutral-500">Διάλεξε και το επίπεδό σου.</p>
-                )}
-                {saved && savedLevel && (
-                  <Button variant="ghost" className="mt-2 w-full" disabled={saving}
-                    onClick={() => { setPrimary(saved); setLevel(savedLevel); setOpen(false); }}>
-                    Κλείσιμο
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="f-display border border-black bg-black px-3 py-2 text-[16px] font-bold uppercase tracking-wide text-white">
-                    {PRIMARY_LABELS[saved] || saved}
-                  </span>
-                  {savedLevel && (
-                    <span className="f-display border border-black px-3 py-2 text-[14px] font-bold uppercase tracking-wide">
-                      {LEVEL_LABELS[savedLevel]}
-                    </span>
-                  )}
-                </div>
-                <button type="button" onClick={() => setOpen(true)}
-                  className="f-display text-[14px] font-bold uppercase tracking-wide underline">
-                  Άλλαξε
-                </button>
-              </div>
-            )}
-
-            <div className="mt-4">
-              <Button size="lg" disabled={!saved || saving} onClick={() => window.openWorkout()}>
-                Άνοιγμα προπόνησης
-              </Button>
-              {!saved && (
-                <p className="f-text mt-2 text-[13px] text-neutral-500">Διάλεξε και αποθήκευσε πρώτα είδος προπόνησης.</p>
-              )}
-            </div>
-          </>
-        )
-      )}
     </div>
   );
 }
@@ -4040,7 +3918,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {hasGoals && workoutOn && (
+          {workoutOn && (
             <button type="button" onClick={() => window.openWorkout()}
               aria-label="Άνοιγμα προπόνησης" title="Προπόνηση"
               className="bolt-btn flex h-11 w-11 shrink-0 items-center justify-center border border-black bg-black">
@@ -4517,7 +4395,7 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
       <div className="shrink-0 flex items-center justify-between gap-3 border-b border-black px-5 pt-4 pb-3">
         <div className="min-w-0">
           <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
-          <p className="f-text mt-1 text-[13px] text-neutral-500">Διαθέσιμες ώρες και θέσεις που μένουν</p>
+          <p className="f-text mt-1 text-[13px] text-neutral-500">Διαθέσιμες ώρες</p>
         </div>
         <CreditsBadge credits={credits} />
       </div>
@@ -4574,17 +4452,14 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
                         <span className="f-display border border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
                           {attended ? "Έκανες check-in" : "Έχεις κράτηση"}
                         </span>
-                      ) : (
-                        <StatRow items={[
-                          { value: full ? "0" : s.capacity - s.taken, label: "ελεύθερες" },
-                          { value: `${s.taken}/${s.capacity}`, label: "" },
-                        ]} />
-                      )}
+                      ) : full ? (
+                        <span className="f-text text-[13px] text-neutral-500">Δεν υπάρχουν διαθέσιμες θέσεις</span>
+                      ) : null}
                     </div>
                   </div>
                   <div className="shrink-0">
                     {attended ? null : myB ? (
-                      <Button variant="outline" size="sm" disabled={isBusy}
+                      <Button variant="danger" size="sm" disabled={isBusy}
                         onClick={() => cancel(myB.id, s.slot_time)}>
                         Ακύρωση
                       </Button>
@@ -4598,7 +4473,6 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
                     )}
                   </div>
                 </div>
-                <div className="mt-3.5"><SeatMeter taken={s.taken} cap={s.capacity} /></div>
               </div>
             );
           })}
@@ -4658,7 +4532,7 @@ function MyBookings({ session, flash, onMine }) {
                 <div className="f-text mt-1 text-[13px] text-neutral-500">{fmtDay(b.date)} · {label[b.status] || b.status}</div>
               </div>
               {b.status === "booked" && (
-                <Button variant="outline" size="sm" disabled={busyId === b.id} onClick={() => cancel(b.id)}>Ακύρωση</Button>
+                <Button variant="danger" size="sm" disabled={busyId === b.id} onClick={() => cancel(b.id)}>Ακύρωση</Button>
               )}
             </div>
           ))}
@@ -5147,6 +5021,10 @@ loadAppSettings().then(() => {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg>
       Πρόοδος
     </button>
+    <button class="tab" role="tab" data-view="goals" aria-selected="false">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>
+      Στόχοι
+    </button>
     <button class="tab" role="tab" data-view="nutrition" aria-selected="false">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 3v8a3 3 0 006 0V3M9 11v10M18 3c-1.5 2-2 4-2 6s.5 3 2 3 2-1 2-3-.5-4-2-6zM18 12v9"/></svg>
       Διατροφή
@@ -5190,7 +5068,7 @@ loadAppSettings().then(() => {
     </div>
     <div id="exercise-list"></div>
     <div class="btn-row">
-      <button class="btn btn-quiet btn-block" id="finish-session">Τέλος — ολοκλήρωσα την προπόνηση</button>
+      <button class="btn btn-quiet btn-block" id="finish-session">Ολοκλήρωσε την προπόνηση</button>
     </div>
   </main>
 
@@ -5241,16 +5119,6 @@ loadAppSettings().then(() => {
         </div>
       </div>
 
-    <!-- ΤΟ ΠΡΟΓΡΑΜΜΑ ΣΟΥ — ήταν στις Ρυθμίσεις -->
-    <div class="section-head section-head-sub">
-      <h2>Το πρόγραμμά σου</h2>
-      <p id="storage-mode"></p>
-    </div>
-
-    <div class="panel" id="plan-mode-panel"></div>
-
-    <div class="panel" id="goal-panel" hidden></div>
-
     <div class="panel">
       <h3>Τα δεδομένα σου</h3>
       <div class="app-note" id="export-note" hidden>
@@ -5264,6 +5132,45 @@ loadAppSettings().then(() => {
         <button class="btn btn-quiet" id="excel-btn">Excel</button>
       </div>
       <div id="data-status"></div>
+    </div>
+  </main>
+
+  <!-- ΣΤΟΧΟΙ -->
+  <main id="view-goals" role="tabpanel" hidden>
+    <div class="section-head">
+      <h2>Στόχοι</h2>
+      <p>Από εδώ ξεκινάει το πρόγραμμά σου.</p>
+    </div>
+
+    <div class="panel goal-card" id="goal-ask-card">
+      <h3>Ζήτα βοήθεια από τον Προπονητή</h3>
+      <p class="hint" id="goal-ask-hint">Πες μας τι θέλεις να πετύχεις και σε τι επίπεδο είσαι. Ο προπονητής το βλέπει και σου φτιάχνει πρόγραμμα.</p>
+      <button type="button" class="btn btn-primary btn-block" id="goal-ask-btn">Ζήτα βοήθεια από τον Προπονητή</button>
+    </div>
+
+    <div class="panel goal-card" id="goal-own-card">
+      <h3>Φτιάξε το δικό σου Πρόγραμμα</h3>
+      <p class="hint" id="goal-own-hint">Γράψε μόνος σου τις μέρες και τις ασκήσεις σου.</p>
+      <button type="button" class="btn btn-quiet btn-block" id="goal-own-btn">Φτιάξε το δικό σου Πρόγραμμα</button>
+    </div>
+
+    <div class="panel" id="goal-plan-panel"></div>
+
+    <!-- Η φόρμα των στόχων, όταν πατηθεί το πρώτο κουτί. -->
+    <div class="setup" id="goal-form" hidden>
+      <div class="shell">
+        <h2 class="setup-title">Ζήτα βοήθεια από τον Προπονητή</h2>
+        <p class="setup-lead">Διάλεξε το είδος της προπόνησής σου. Από αυτό φτιάχνεται το πρόγραμμά σου.</p>
+        <div id="goal-form-primary"></div>
+        <h3 class="goal-form-head">Επίπεδο</h3>
+        <p class="hint">Πόση εμπειρία έχεις με τα βάρη; Από αυτό αλλάζουν τα σετ, οι επαναλήψεις και η ένταση.</p>
+        <div id="goal-form-level"></div>
+        <div id="goal-form-status"></div>
+        <div class="builder-bar">
+          <button type="button" class="btn btn-quiet" id="goal-form-cancel">Άκυρο</button>
+          <button type="button" class="btn btn-primary" id="goal-form-save">Στείλ' το στον προπονητή</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -5334,14 +5241,14 @@ loadAppSettings().then(() => {
         <button type="button" class="btn btn-primary btn-block" id="choice-trainer">Ξεκίνα με αυτό</button>
       </div>
 
-      <div class="choice" data-kind="auto">
-        <h3>Το πρόγραμμα της εφαρμογής</h3>
-        <p id="choice-auto-text">Στήνεται από τον στόχο που έχεις δηλώσει στις κρατήσεις.</p>
-        <button type="button" class="btn btn-primary btn-block" id="choice-auto">Ξεκίνα με αυτό</button>
+      <div class="choice" data-kind="ask">
+        <h3>Ζήτα βοήθεια από τον Προπονητή</h3>
+        <p>Πες μας τον στόχο και το επίπεδό σου. Ο προπονητής σου φτιάχνει πρόγραμμα και το βρίσκεις εδώ.</p>
+        <button type="button" class="btn btn-primary btn-block" id="choice-ask">Ζήτα βοήθεια</button>
       </div>
 
       <div class="choice" data-kind="custom">
-        <h3>Το δικό μου πρόγραμμα</h3>
+        <h3>Φτιάξε το δικό σου Πρόγραμμα</h3>
         <p>Γράψε τις μέρες και τις ασκήσεις σου, π.χ. αυτές που σου έδωσε ο γυμναστής σου.</p>
         <button type="button" class="btn btn-quiet btn-block" id="choice-manual">Γράψ' το μόνος μου</button>
       </div>
@@ -5360,6 +5267,15 @@ loadAppSettings().then(() => {
         <button type="button" class="btn btn-primary" id="builder-save">Αποθήκευση</button>
       </div>
     </section>
+  </div>
+</div>
+
+<div class="done-wrap" id="done-msg" hidden>
+  <div class="done-box">
+    <div class="done-emoji" id="done-emoji">💪</div>
+    <h3 class="done-title" id="done-title"></h3>
+    <p class="done-text" id="done-text"></p>
+    <button type="button" class="btn btn-primary btn-block" id="done-close">Ωραία</button>
   </div>
 </div>
 
@@ -7251,7 +7167,25 @@ function __bootWorkout() {
       }
     }
 
-    return { CLIENT_URL, readClientSession, clientName, fetchBrand, fetchGoals, fetchTrainerProgram };
+    /* Ο πελάτης δηλώνει στόχο και επίπεδο μέσα από το καρνέ. Γράφονται
+       στην ίδια στήλη που διαβάζει η διαχείριση στο «Στόχοι πελατών». */
+    async function saveGoals(primary, level) {
+      const session = readClientSession();
+      if (!session) return { ok: false, error: 'Χρειάζεται σύνδεση' };
+      try {
+        const data = await rpc('save_goals', {
+          p_client_id: session.clientId,
+          p_goals: [], p_custom: [],
+          p_primary: primary, p_level: level
+        });
+        if (!data || data.ok !== true) return { ok: false, error: (data && data.error) || 'Δεν στάλθηκε' };
+        return { ok: true, primary: data.primary || primary, level: data.level || level };
+      } catch (e) {
+        return { ok: false, error: 'Δεν στάλθηκε' };
+      }
+    }
+
+    return { CLIENT_URL, readClientSession, clientName, fetchBrand, fetchGoals, fetchTrainerProgram, saveGoals };
   })();
 
 
@@ -7268,7 +7202,7 @@ function __bootWorkout() {
       GOAL_LABELS, configFromGoals, autoMix
     } = __data;
     const { lineChart, barRow } = __charts;
-    const { fetchBrand, fetchGoals, CLIENT_URL, fetchTrainerProgram } = __link;
+    const { fetchBrand, fetchGoals, CLIENT_URL, fetchTrainerProgram, saveGoals } = __link;
 
     /* Το πρόγραμμα φτιάχνεται στην εκκίνηση από τις ρυθμίσεις και
        ξαναφτιάχνεται όποτε αλλάξουν. Μέχρι τότε είναι άδειο. */
@@ -7359,7 +7293,6 @@ function __bootWorkout() {
           });
         }
         if (raw.custom && Array.isArray(raw.custom.days)) plan.custom = raw.custom;
-        if (raw.autoTweaks && typeof raw.autoTweaks === 'object') plan.autoTweaks = raw.autoTweaks;
         if (raw.trainer && Array.isArray(raw.trainer.days)) plan.trainer = raw.trainer;
         if (raw.trainerSeen) plan.trainerSeen = raw.trainerSeen;
         if (raw.updated_at) plan.updated_at = raw.updated_at;
@@ -7372,7 +7305,7 @@ function __bootWorkout() {
     function rebuild() {
       const src = ownSource();
       const own = src ? customBuild(src) : null;
-      BUILD = own || buildProgram(state.plan.config);
+      BUILD = own || { program: {}, order: [] };
       PROGRAM = BUILD.program;
       DAY_ORDER = BUILD.order;
       DAY_ORDER.forEach((d) => {
@@ -7671,6 +7604,27 @@ function __bootWorkout() {
       list.innerHTML = '';
       const session = sessionFor(logDate(), state.day);
 
+      /* Χωρίς πρόγραμμα δεν υπάρχει τίποτα να καταγράψει. Τον στέλνουμε
+         στους Στόχους, που είναι και το μόνο σημείο που φτιάχνεται. */
+      if (!usingOwn()) {
+        $('#day-title').textContent = 'Δεν έχεις πρόγραμμα ακόμα';
+        $('#day-focus').textContent = '';
+        const box = document.createElement('div');
+        box.className = 'cardio-note';
+        box.innerHTML = '<h3>Ξεκίνα από τους Στόχους</h3>' +
+          '<p>Ζήτα βοήθεια από τον προπονητή σου ή φτιάξε μόνος σου πρόγραμμα.</p>';
+        list.appendChild(box);
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'btn btn-primary btn-block';
+        go.textContent = 'Άνοιξε τους Στόχους';
+        go.addEventListener('click', () => showView('goals'));
+        list.appendChild(go);
+        $('#finish-session').hidden = true;
+        return;
+      }
+      $('#finish-session').hidden = false;
+
       /* Μέρα εκτός γυμναστηρίου: οδηγία, όχι σετ. Κλείνει κι αυτή, ώστε
          η ρότα της εβδομάδας να προχωράει κανονικά. */
       if (day.kind === 'move') {
@@ -7684,7 +7638,7 @@ function __bootWorkout() {
 
         const finishMove = $('#finish-session');
         finishMove.textContent =
-          session && session.done ? '✓ Ολοκληρώθηκε' : 'Τέλος — ολοκλήρωσα τη μέρα';
+          session && session.done ? '✓ Ολοκληρώθηκε' : 'Ολοκλήρωσε την προπόνηση';
         finishMove.disabled = !!(session && session.done);
         return;
       }
@@ -7800,7 +7754,7 @@ function __bootWorkout() {
 
       const finish = $('#finish-session');
       finish.textContent =
-        session && session.done ? '✓ Ολοκληρώθηκε' : 'Τέλος — ολοκλήρωσα την προπόνηση';
+        session && session.done ? '✓ Ολοκληρώθηκε' : 'Ολοκλήρωσε την προπόνηση';
       finish.disabled = !!(session && session.done);
     }
 
@@ -8291,6 +8245,55 @@ function __bootWorkout() {
       return wrap;
     }
 
+    /* Πόσα από τα σετ της μέρας καταγράφηκαν και αν έπεσε ρεκόρ. Από
+       αυτά βγαίνει το μήνυμα στο τέλος. */
+    function sessionScore(session) {
+      let planned = 0, done = 0, pr = false;
+      dayExercises(state.day).forEach((ex) => {
+        planned += Number(ex.sets) || 0;
+        const sets = ((session && session.entries[ex.id]) || []).filter((x) => x && x.w != null);
+        done += sets.length;
+        if (!sets.length) return;
+        const best = Math.max(...sets.map((x) => Number(x.w) || 0));
+        const prev = lastPerformance(ex.id);
+        const prevBest = prev ? Math.max(...prev.sets.map((x) => Number(x.w) || 0)) : 0;
+        if (prevBest > 0 && best > prevBest) pr = true;
+      });
+      return { planned, done, pr, ratio: planned ? done / planned : (done ? 1 : 0) };
+    }
+
+    function finishMessage(isMove, session) {
+      if (isMove) {
+        return { emoji: '🚶', title: 'Κλείσαμε τη μέρα', text: 'Η κίνηση μετράει κι αυτή. Τα λέμε στην επόμενη.' };
+      }
+      const sc = sessionScore(session);
+      if (sc.pr) {
+        return { emoji: '🏆', title: 'Νέο ρεκόρ!', text: `Σήκωσες περισσότερα από κάθε άλλη φορά. ${sc.done} σετ στο καρνέ.` };
+      }
+      if (sc.ratio >= 1) {
+        return { emoji: '🔥', title: 'Τέλεια προπόνηση', text: `Έκανες και τα ${sc.done} σετ της μέρας. Έτσι χτίζεται η πρόοδος.` };
+      }
+      if (sc.ratio >= 0.8) {
+        return { emoji: '💪', title: 'Δυνατή προπόνηση', text: `${sc.done} από τα ${sc.planned} σετ. Πολύ κοντά στο πλήρες.` };
+      }
+      if (sc.ratio >= 0.5) {
+        return { emoji: '👊', title: 'Καλή δουλειά', text: `${sc.done} από τα ${sc.planned} σετ. Την επόμενη φορά κλείσε και τα υπόλοιπα.` };
+      }
+      return { emoji: '🙂', title: 'Μετράει κι αυτό', text: `${sc.done} από τα ${sc.planned} σετ. Το να έρθεις είναι το δύσκολο.` };
+    }
+
+    function showFinishMessage(msg) {
+      const wrap = $('#done-msg');
+      if (!wrap) return;
+      $('#done-emoji').textContent = msg.emoji;
+      $('#done-title').textContent = msg.title;
+      $('#done-text').textContent = msg.text;
+      wrap.hidden = false;
+    }
+
+    on('#done-close', 'click', () => { $('#done-msg').hidden = true; });
+    on('#done-msg', 'click', (e) => { if (e.target.id === 'done-msg') $('#done-msg').hidden = true; });
+
     $('#finish-session').addEventListener('click', () => {
       const day = PROGRAM[state.day] || {};
       const isMove = day.kind === 'move';
@@ -8300,12 +8303,14 @@ function __bootWorkout() {
         return;
       }
       if (!session) session = ensureSession(logDate(), state.day);
+      const msg = finishMessage(isMove, session);
       session.done = true;
       save('sessions');
       stopTimer();
       renderTrain();
       renderMasthead();
       renderProgress();
+      showFinishMessage(msg);
     });
 
     /* ---------- Χρονόμετρο ξεκούρασης ---------- */
@@ -8903,7 +8908,8 @@ function __bootWorkout() {
     /* ---------- Ρυθμίσεις ---------- */
 
     function renderSettings() {
-      $('#storage-mode').textContent =
+      const sm = $('#storage-mode');
+      if (sm) sm.textContent =
         store.storageMode() === 'local'
           ? 'Τα δεδομένα γράφονται στη συσκευή και ανεβαίνουν μόνα τους στο cloud.'
           : 'Ο browser μπλοκάρει την τοπική αποθήκευση, οπότε τα δεδομένα κρατιούνται μόνο για αυτή τη συνεδρία. Σε κανονική σελίδα θα αποθηκεύονται μόνιμα.';
@@ -9007,6 +9013,8 @@ function __bootWorkout() {
       /* Το επίπεδο διαλέγεται πια στις Ρυθμίσεις των κρατήσεων, μαζί με
          τον στόχο. Χωρίς επιλογή εκεί μένει ό,τι είχε το καρνέ. */
       const lvl = GOALS.level || state.plan.config.level || DEFAULT_LEVEL;
+
+      renderGoalsView();
 
       const c = goalConfig();
       if (!c) { applyPlanConfig({ ...state.plan.config, level: lvl }); renderConfig(); return; }
@@ -9974,11 +9982,9 @@ function __bootWorkout() {
     if (clientLink) clientLink.href = CLIENT_URL;
 
     /* ---------- Το δικό σου πρόγραμμα ----------
-       plan.config.mode: 'auto'   = το πρόγραμμα της εφαρμογής (buildProgram)
-                         'custom' = plan.custom, ανεβασμένο ή γραμμένο με το χέρι
-                         κενό     = δεν έχει διαλέξει ακόμα → βγαίνει η επιλογή.
-       Όταν φεύγεις από το αυτόματο, οι αλλαγές σου πάνω του (overrides,
-       extras) φυλάγονται στο plan.autoTweaks και γυρνάνε αν επιστρέψεις. */
+       plan.config.mode: 'trainer' = το πρόγραμμα του γυμναστή
+                         'custom'  = plan.custom, γραμμένο με το χέρι
+                         κενό      = δεν έχει πρόγραμμα → βγαίνει η επιλογή. */
 
     const MAX_CUSTOM_DAYS = 7;
     const KIND_LABEL = { lift: 'Βάρη', cardio: 'Καρντιό', walk: 'Περπάτημα' };
@@ -10082,8 +10088,9 @@ function __bootWorkout() {
       $('#plan-setup').hidden = false;
       $('#plan-choice').hidden = false;
       $('#plan-builder').hidden = true;
-      $('#choice-cancel').hidden = !canCancel;
-      $('#choice-lead').textContent = 'Διάλεξε από πού έρχεται το πρόγραμμά σου. Το αλλάζεις όποτε θέλεις από την Πρόοδο.';
+      $('#choice-cancel').hidden = false;
+      $('#choice-cancel').textContent = canCancel ? 'Άκυρο, κράτα το τωρινό' : 'Όχι τώρα';
+      $('#choice-lead').textContent = 'Διάλεξε από πού έρχεται το πρόγραμμά σου. Το αλλάζεις όποτε θέλεις από την καρτέλα Στόχοι.';
       renderChoiceText();
       $('#plan-setup').scrollTop = 0;
     }
@@ -10099,14 +10106,12 @@ function __bootWorkout() {
     };
 
     function renderChoiceText() {
-      const el = $('#choice-auto-text');
-      if (!el) return;
-      const tr = state.plan.trainer;
       const card = $('#choice-trainer-card');
+      if (!card) return;
+      const tr = state.plan.trainer;
       const has = hasDays(tr);
       card.hidden = !has;
       $('#plan-setup').dataset.trainer = String(has);
-      $('#choice-auto').className = 'btn btn-block ' + (has ? 'btn-quiet' : 'btn-primary');
       if (has) {
         const n = tr.days.length;
         $('#choice-trainer-text').textContent =
@@ -10114,13 +10119,7 @@ function __bootWorkout() {
           (tr.updated_at ? `, ενημερώθηκε ${fmtDay(tr.updated_at)}.` : '.') +
           (tr.note ? `\n\n${tr.note}` : '');
       }
-      const c = goalConfig();
-      const days = state.plan.config.mode === 'custom' ? targetDays() : currentDays();
-      if (c && PRESETS[c.preset]) {
-        el.textContent = `Φτιαγμένο για τον στόχο σου, «${PRESETS[c.preset].label}», σε ${days} μέρες την εβδομάδα. Στόχο και μέρες τα αλλάζεις από τις Ρυθμίσεις των κρατήσεων.`;
-      } else {
-        el.textContent = `Δεν έχεις δηλώσει στόχο ακόμα, οπότε ξεκινάς με ένα γενικό πρόγραμμα ${days} ημερών. Τον στόχο τον βάζεις στις Ρυθμίσεις των κρατήσεων.`;
-      }
+      renderGoalsView();
     }
 
     function markTrainerSeen() {
@@ -10129,7 +10128,6 @@ function __bootWorkout() {
 
     function chooseTrainer() {
       if (!hasDays(state.plan.trainer)) return;
-      stashAutoTweaks();
       markTrainerSeen();
       state.plan.config = { ...state.plan.config, mode: 'trainer' };
       state.plan.overrides = {};
@@ -10182,11 +10180,6 @@ function __bootWorkout() {
       }
     }
 
-    function stashAutoTweaks() {
-      if (['custom', 'trainer'].includes(state.plan.config.mode)) return;
-      state.plan.autoTweaks = { overrides: state.plan.overrides, extras: state.plan.extras };
-    }
-
     function finishSwitch(message) {
       savePlan();
       rebuild();
@@ -10197,18 +10190,6 @@ function __bootWorkout() {
       renderSettings();
       closeSetup();
       if (message && $('#plan-mode-status')) setStatus($('#plan-mode-status'), message, true);
-    }
-
-    function chooseAuto() {
-      const wasOwn = ['custom', 'trainer'].includes(state.plan.config.mode);
-      markTrainerSeen();
-      state.plan.config = { ...state.plan.config, mode: 'auto' };
-      if (wasOwn) {
-        const t = state.plan.autoTweaks || {};
-        state.plan.overrides = t.overrides || {};
-        state.plan.extras = t.extras || {};
-      }
-      finishSwitch('Ακολουθείς το πρόγραμμα της εφαρμογής.');
     }
 
     /* ---- Ο συντάκτης ----
@@ -10608,7 +10589,6 @@ function __bootWorkout() {
         setStatus($('#builder-status'), 'Χρειάζεται τουλάχιστον μία μέρα με βάρη.', false);
         return;
       }
-      stashAutoTweaks();
       state.plan.custom = { days, source: 'manual', updated: today() };
       state.plan.config = { ...state.plan.config, mode: 'custom' };
       state.plan.overrides = {};
@@ -10617,17 +10597,17 @@ function __bootWorkout() {
     });
 
 
-    on('#choice-auto', 'click', chooseAuto);
+    on('#choice-ask', 'click', () => { closeSetup(); showView('goals'); openGoalForm(); });
     on('#choice-manual', 'click', () => {
       openBuilder(usingCustom() ? draftFromCurrent() : null);
     });
     on('#choice-cancel', 'click', () => { markTrainerSeen(); savePlan(); closeSetup(); });
     on('#choice-trainer', 'click', chooseTrainer);
 
-    /* ---- Η κάρτα στην Πρόοδο ---- */
+    /* ---- Η κάρτα του προγράμματος, στους Στόχους ---- */
 
     function renderPlanMode() {
-      const host = $('#plan-mode-panel');
+      const host = $('#goal-plan-panel');
       if (!host) return;
       const n = DAY_ORDER.length;
       const days = `${n} ${n === 1 ? 'μέρα' : 'μέρες'} την εβδομάδα`;
@@ -10643,21 +10623,19 @@ function __bootWorkout() {
         hint = `${days}, όπως το έγραψες.`;
         buttons = `<button type="button" class="btn btn-quiet" data-act="edit">Επεξεργασία</button>`;
       } else {
-        title = 'Πρόγραμμα της εφαρμογής';
-        hint = 'Ακολουθεί τον στόχο σου από τις κρατήσεις.';
-        buttons = '';
+        host.hidden = true;
+        host.innerHTML = '';
+        return;
       }
+      host.hidden = false;
       host.innerHTML =
         `<h3>${title}</h3><p class="hint">${hint}</p>` +
         `<div class="plan-mode-row">${buttons}` +
         `<button type="button" class="btn btn-quiet" data-act="change">Άλλαξε πρόγραμμα</button>` +
         `</div><div id="plan-mode-status"></div>`;
-      if (usingOwn()) {
-        ['#goal-panel'].forEach((sel) => { const el = $(sel); if (el) el.hidden = true; });
-      }
     }
 
-    on('#plan-mode-panel', 'click', (e) => {
+    on('#goal-plan-panel', 'click', (e) => {
       const b = e.target.closest('button[data-act]');
       if (!b) return;
       if (b.dataset.act === 'edit') openBuilder(draftFromCurrent());
@@ -10669,15 +10647,117 @@ function __bootWorkout() {
     });
 
 
+    /* ---------- Στόχοι ----------
+       Δύο κουτιά: βοήθεια από τον προπονητή (ο πελάτης δηλώνει στόχο και
+       επίπεδο, και τα βλέπει η διαχείριση στο «Στόχοι πελατών») ή δικό του
+       πρόγραμμα. Από εδώ περνάει και η κάρτα του τρέχοντος προγράμματος. */
+
+    const GOAL_ORDER = ['recomp', 'cut', 'bulk', 'strength', 'endurance',
+      'maintain', 'beginner', 'rehab', 'event'];
+
+    let goalDraft = { primary: '', level: '' };
+
+    function renderGoalsView() {
+      renderPlanMode();
+      const hint = $('#goal-ask-hint');
+      if (hint) {
+        const p = GOALS && GOALS.primary && PRESETS[GOALS.primary];
+        const lv = GOALS && GOALS.level && LEVELS[GOALS.level];
+        hint.textContent = p
+          ? `Έχεις δηλώσει «${p.label}»${lv ? `, επίπεδο ${lv.label}` : ''}. Ο προπονητής το βλέπει και σου φτιάχνει πρόγραμμα.`
+          : 'Πες μας τι θέλεις να πετύχεις και σε τι επίπεδο είσαι. Ο προπονητής το βλέπει και σου φτιάχνει πρόγραμμα.';
+      }
+      const askBtn = $('#goal-ask-btn');
+      if (askBtn) askBtn.textContent = (GOALS && GOALS.primary) ? 'Άλλαξε τον στόχο σου' : 'Ζήτα βοήθεια από τον Προπονητή';
+      const ownBtn = $('#goal-own-btn');
+      if (ownBtn) ownBtn.textContent = usingCustom() ? 'Άλλαξε το πρόγραμμά σου' : 'Φτιάξε το δικό σου Πρόγραμμα';
+    }
+
+    function goalOptionRow(key, label, desc, on, attr) {
+      return `<button type="button" class="goal-opt" ${attr}="${esc(key)}" aria-pressed="${on}">` +
+        `<span class="dot" aria-hidden="true"></span>` +
+        `<span class="label">${esc(label)}</span></button>` +
+        (on && desc ? `<p class="goal-opt-desc">${esc(desc)}</p>` : '');
+    }
+
+    function renderGoalForm() {
+      const host = $('#goal-form-primary');
+      if (!host) return;
+      host.innerHTML = GOAL_ORDER.filter((k) => PRESETS[k]).map((k) =>
+        goalOptionRow(k, PRESETS[k].label, PRESETS[k].tagline, goalDraft.primary === k, 'data-goal')).join('');
+      $('#goal-form-level').innerHTML = LEVEL_ORDER.map((k) =>
+        goalOptionRow(k, LEVELS[k].label, LEVELS[k].hint, goalDraft.level === k, 'data-lvl')).join('');
+    }
+
+    function openGoalForm() {
+      goalDraft = {
+        primary: (GOALS && PRESETS[GOALS.primary]) ? GOALS.primary : '',
+        level: (GOALS && LEVELS[GOALS.level]) ? GOALS.level : ''
+      };
+      renderGoalForm();
+      $('#goal-form-status').innerHTML = '';
+      $('#goal-form').hidden = false;
+      $('#goal-form').scrollTop = 0;
+    }
+
+    on('#goal-ask-btn', 'click', openGoalForm);
+    on('#goal-form-cancel', 'click', () => { $('#goal-form').hidden = true; });
+    on('#goal-own-btn', 'click', () => {
+      openBuilder(usingCustom() ? draftFromCurrent() : null);
+    });
+
+    on('#goal-form-primary', 'click', (e) => {
+      const b = e.target.closest('button[data-goal]');
+      if (!b) return;
+      goalDraft.primary = b.dataset.goal;
+      renderGoalForm();
+    });
+    on('#goal-form-level', 'click', (e) => {
+      const b = e.target.closest('button[data-lvl]');
+      if (!b) return;
+      goalDraft.level = b.dataset.lvl;
+      renderGoalForm();
+    });
+
+    on('#goal-form-save', 'click', async () => {
+      const st = $('#goal-form-status');
+      if (!goalDraft.primary || !goalDraft.level) {
+        setStatus(st, 'Διάλεξε είδος προπόνησης και επίπεδο.', false);
+        return;
+      }
+      const btn = $('#goal-form-save');
+      btn.disabled = true;
+      const res = await saveGoals(goalDraft.primary, goalDraft.level);
+      btn.disabled = false;
+      if (!res.ok) { setStatus(st, res.error || 'Δεν στάλθηκε', false); return; }
+      GOALS = {
+        primary: res.primary,
+        level: LEVELS[res.level] ? res.level : goalDraft.level,
+        goals: (GOALS && GOALS.goals) || [],
+        custom: (GOALS && GOALS.custom) || []
+      };
+      state.plan.config = { ...state.plan.config, level: GOALS.level };
+      savePlan();
+      $('#goal-form').hidden = true;
+      renderGoalsView();
+      showFinishMessage({
+        emoji: '📨',
+        title: 'Στάλθηκε στον προπονητή',
+        text: 'Μόλις σου φτιάξει πρόγραμμα, θα το βρεις εδώ.'
+      });
+    });
+
     /* ---------- Πλοήγηση ---------- */
 
     function showView(name) {
       state.view = name;
-      ['train', 'progress', 'nutrition'].forEach((v) => {
-        $('#view-' + v).hidden = v !== name;
+      ['train', 'progress', 'goals', 'nutrition'].forEach((v) => {
+        const el = $('#view-' + v);
+        if (el) el.hidden = v !== name;
       });
       $$('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.view === name)));
       if (name === 'progress') { renderProgress(); renderSettings(); }
+      if (name === 'goals') renderGoalsView();
       window.scrollTo({ top: 0 });
     }
 
@@ -10689,6 +10769,7 @@ function __bootWorkout() {
       renderMasthead();
       renderTrain();
       renderProgress();
+      renderGoalsView();
       renderNutrition();
     }
 

@@ -1047,11 +1047,11 @@ function Toast({ msg }) {
 
 /* ---------- Root ---------- */
 const TABS = [
-  ["schedule", "Πρόγραμμα"],
+  ["schedule", "Ημερολόγιο"],
   ["hours", "Χωρητικότητα"],
   ["people", "Πελάτες"],
   ["goals", "Στόχοι πελατών"],
-  ["programs", "Προγράμματα"],
+  ["programs", "Προπονήσεις"],
   ["access", "Είσοδος, QR & NFC"],
   ["newsletter", "Ενημερώσεις"],
   ["announce", "Ειδοποιήσεις"],
@@ -1706,8 +1706,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
             const people = s.people || [];
             const present = people.filter((p) => p.status === "checked_in").length;
             const expanded = open === s.slot_time;
-            /* Ο διαχειριστής κάνει check-in όποτε θέλει: και πριν ανοίξει
-               η ώρα, και την επόμενη μέρα για χθεσινή κράτηση. */
+            const opensAt = s.checkin_opens_at ? new Date(s.checkin_opens_at) : null;
+            const tooEarly = !!opensAt && nowMs < opensAt.getTime();
+            const opensLabel = opensAt ? `${pad2(opensAt.getHours())}:${pad2(opensAt.getMinutes())}` : "";
             return (
               <div key={s.slot_time}>
                 <button onClick={() => toggleSlot(s.slot_time)}
@@ -1745,9 +1746,13 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                 )}
                               </div>
                               <div className="f-mono text-[12px] text-neutral-500">{p.phone}</div>
+                              {p.status !== "checked_in" && tooEarly && (
+                                <div className="f-text text-[12px] text-neutral-500">Check-in από τις {opensLabel}</div>
+                              )}
                             </div>
                             <div className="flex shrink-0 gap-2">
                               <Button size="sm" variant={p.status === "checked_in" ? "outline" : "primary"}
+                                disabled={p.status !== "checked_in" && tooEarly}
                                 onClick={() => setStatus(p.booking_id, p.status === "checked_in" ? "booked" : "checked_in")}>
                                 {p.status === "checked_in" ? "Αναίρεση" : "Check-in"}
                               </Button>
@@ -3988,9 +3993,6 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
         <Row label="Check-in ανοίγει" hint="λεπτά πριν την ώρα">
           <Stepper value={s.checkin_before_min} min={5} max={120} suffix="'" onChange={(v) => set("checkin_before_min", v)} />
         </Row>
-        <Row label="Check-in κλείνει" hint="λεπτά μετά την ώρα">
-          <Stepper value={s.checkin_after_min} min={5} max={120} suffix="'" onChange={(v) => set("checkin_after_min", v)} />
-        </Row>
         <Row label="Υπενθύμιση" hint="λεπτά πριν την κράτηση">
           <Stepper value={s.reminder_min} min={10} max={240} suffix="'" onChange={(v) => set("reminder_min", v)} />
         </Row>
@@ -4323,6 +4325,21 @@ const P_LIB = {};
 Object.keys(P_LIBRARY).forEach((g) => P_LIBRARY[g].forEach((x) => { P_LIB[x.id] = { ...x, group: g }; }));
 const P_KINDS = [["lift", "Βάρη"], ["cardio", "Καρντιό"], ["walk", "Περπάτημα"]];
 
+/* Οι ενότητες των έτοιμων προγραμμάτων. Τα κλειδιά είναι ακριβώς αυτά
+   της goal_primary_keys() στη βάση και των PRIMARY_GOALS στο index.html. */
+const P_PRIMARY = [
+  ["recomp", "Recomposition"],
+  ["cut", "Γράμμωση"],
+  ["bulk", "Lean bulk"],
+  ["strength", "Δύναμη"],
+  ["endurance", "Αντοχή"],
+  ["maintain", "Διατήρηση"],
+  ["beginner", "Πρώτη φορά στο γυμναστήριο"],
+  ["rehab", "Επιστροφή μετά από τραυματισμό"],
+  ["event", "Προετοιμασία για αγώνα ή τεστ"],
+];
+const P_PRIMARY_LABELS = P_PRIMARY.reduce((o, [k, l]) => { o[k] = l; return o; }, {});
+
 const pUid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID()
   : "x" + Date.now().toString(36) + Math.random().toString(36).slice(2));
 let pKey = 0;
@@ -4480,9 +4497,13 @@ function PExercise({ ex, index, onChange, onRemove, onGroup, onLib }) {
   );
 }
 
-function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
+function ProgramEditor({ target, presets, flash, onAuthFail, onClose, onSaved }) {
+  const isPreset = target.kind === "preset";
   const [form, setForm] = useState(null);
   const [note, setNote] = useState("");
+  const [name, setName] = useState(target.name || "");
+  const [goal, setGoal] = useState(target.goal || P_PRIMARY[0][0]);
+  const [id, setId] = useState(target.id || null);
   const [savedAt, setSavedAt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -4492,7 +4513,13 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
     let alive = true;
     setForm(null); setErr(""); setDirty(false);
     (async () => {
-      const { data, error } = await rpc("admin_get_program", { p_client_id: client.id });
+      if (isPreset && !target.id) {
+        setForm([pBlankDay(0)]); setNote(""); setSavedAt(null);
+        return;
+      }
+      const { data, error } = isPreset
+        ? await rpc("admin_get_preset", { p_id: target.id })
+        : await rpc("admin_get_program", { p_client_id: target.id });
       if (!alive) return;
       if (error === "AUTH") { onAuthFail(); return; }
       if (error) { flash("Δεν φόρτωσε το πρόγραμμα"); return; }
@@ -4500,6 +4527,7 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
         setForm(pFromSaved(data.days));
         setNote(data.note || "");
         setSavedAt(data.updated_at || null);
+        if (isPreset) { setName(data.name || ""); setGoal(data.goal || P_PRIMARY[0][0]); }
       } else {
         setForm([pBlankDay(0)]);
         setNote("");
@@ -4507,7 +4535,21 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
       }
     })();
     return () => { alive = false; };
-  }, [client.id, flash, onAuthFail]);
+  }, [target.id, target.kind, isPreset, flash, onAuthFail]);
+
+  /* Πέρασμα έτοιμου προγράμματος στον πελάτη: μπαίνει στη φόρμα και
+     αποθηκεύεται με το κανονικό κουμπί, ώστε να μπορεί πρώτα να το
+     πειράξει. */
+  const usePreset = async (presetId) => {
+    if (!presetId) return;
+    const { data, error } = await rpc("admin_get_preset", { p_id: presetId });
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data || !Array.isArray(data.days)) { flash("Δεν φόρτωσε το έτοιμο πρόγραμμα"); return; }
+    setForm(pFromSaved(data.days));
+    setNote(data.note || "");
+    setDirty(true);
+    flash(`Μπήκε το «${data.name}» — πάτα Αποθήκευση`);
+  };
 
   const edit = (fn) => { setForm((f) => fn(f.map((d) => ({ ...d, exercises: d.exercises.slice() })))); setDirty(true); };
   const setDay = (di, patch) => edit((f) => { f[di] = { ...f[di], ...patch }; return f; });
@@ -4554,25 +4596,36 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
     setErr("");
     const out = pToSaved(form);
     if (out.error) { setErr(out.error); return; }
+    if (isPreset && !name.trim()) { setErr("Δώσε όνομα στο έτοιμο πρόγραμμα."); return; }
     setBusy(true);
-    const { data, error } = await rpc("admin_save_program", {
-      p_client_id: client.id, p_days: out.days, p_note: note.trim(),
-    });
+    const { data, error } = isPreset
+      ? await rpc("admin_save_preset", {
+          p_id: id, p_goal: goal, p_name: name.trim(), p_days: out.days, p_note: note.trim(),
+        })
+      : await rpc("admin_save_program", {
+          p_client_id: target.id, p_days: out.days, p_note: note.trim(),
+        });
     setBusy(false);
     if (error === "AUTH") { onAuthFail(); return; }
     if (error || !data || !data.ok) { setErr((data && data.error) || "Η αποθήκευση απέτυχε"); return; }
     setSavedAt(data.updated_at);
+    if (isPreset && data.id) setId(data.id);
     setDirty(false);
     /* Κρατάμε τα id που μόλις δόθηκαν, για να μην αλλάξουν στην επόμενη αποθήκευση. */
     setForm(pFromSaved(out.days));
-    flash("Το πρόγραμμα αποθηκεύτηκε");
+    flash(isPreset ? "Το έτοιμο πρόγραμμα αποθηκεύτηκε" : "Το πρόγραμμα αποθηκεύτηκε");
     onSaved();
   };
 
   const remove = async () => {
-    if (!window.confirm(`Να σβηστεί το πρόγραμμα του/της ${client.name}; Ο πελάτης θα γυρίσει στην επιλογή προγράμματος.`)) return;
+    const q = isPreset
+      ? `Να σβηστεί το έτοιμο πρόγραμμα «${name}»;`
+      : `Να σβηστεί το πρόγραμμα του/της ${target.name}; Ο πελάτης θα γυρίσει στην επιλογή προγράμματος.`;
+    if (!window.confirm(q)) return;
     setBusy(true);
-    const { error } = await rpc("admin_delete_program", { p_client_id: client.id });
+    const { error } = isPreset
+      ? await rpc("admin_delete_preset", { p_id: id })
+      : await rpc("admin_delete_program", { p_client_id: target.id });
     setBusy(false);
     if (error === "AUTH") { onAuthFail(); return; }
     if (error) { flash("Δεν σβήστηκε"); return; }
@@ -4592,8 +4645,12 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
     <div className="mt-6">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-black pb-3">
         <div className="min-w-0">
-          <div className="f-text text-[12px] uppercase tracking-wide text-neutral-500">Πρόγραμμα για</div>
-          <div className="f-display truncate text-[22px] font-extrabold uppercase">{client.name}</div>
+          <div className="f-text text-[12px] uppercase tracking-wide text-neutral-500">
+            {isPreset ? "Έτοιμο πρόγραμμα" : "Πρόγραμμα για"}
+          </div>
+          <div className="f-display truncate text-[22px] font-extrabold uppercase">
+            {isPreset ? (name || "Νέο πρόγραμμα") : target.name}
+          </div>
           <div className="f-mono mt-0.5 text-[11px] text-neutral-500">
             {savedAt ? `Αποθηκεύτηκε ${fmtChatTime(savedAt)}` : "Δεν έχει αποθηκευτεί ακόμα"}
             {dirty && " · έχεις αλλαγές"}
@@ -4602,8 +4659,46 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
         <Button variant="ghost" size="sm" onClick={close}>Κλείσιμο</Button>
       </div>
 
+      {isPreset ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="f-text block text-[12px] uppercase tracking-wide text-neutral-500">Όνομα</span>
+            <input value={name} maxLength={60}
+              onChange={(e) => { setName(e.target.value); setDirty(true); }}
+              placeholder="π.χ. Recomp 3 μέρες"
+              className={P_INPUT + " mt-1"} />
+          </label>
+          <label className="block">
+            <span className="f-text block text-[12px] uppercase tracking-wide text-neutral-500">Ενότητα (στόχος)</span>
+            <select value={goal} onChange={(e) => { setGoal(e.target.value); setDirty(true); }}
+              className={P_INPUT + " mt-1"}>
+              {P_PRIMARY.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </label>
+        </div>
+      ) : (presets && presets.length > 0 && (
+        <div className="mt-4 border-2 border-black p-3">
+          <div className="f-display text-[13px] font-bold uppercase tracking-wide">Πέρασέ του έτοιμο πρόγραμμα</div>
+          <p className="f-text mt-1 text-[13px] leading-relaxed text-neutral-500">
+            Μπαίνει στη φόρμα από κάτω — μπορείς να το πειράξεις πριν το αποθηκεύσεις.
+          </p>
+          <select value="" onChange={(e) => usePreset(e.target.value)} className={P_INPUT + " mt-2"}>
+            <option value="">Διάλεξε έτοιμο πρόγραμμα…</option>
+            {P_PRIMARY.filter(([k]) => presets.some((p) => p.goal === k)).map(([k, l]) => (
+              <optgroup key={k} label={l}>
+                {presets.filter((p) => p.goal === k).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} · {p.days} {p.days === 1 ? "μέρα" : "μέρες"}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      ))}
+
       <label className="mt-4 block">
-        <span className="f-text block text-[12px] uppercase tracking-wide text-neutral-500">Σημείωμα για τον πελάτη (προαιρετικό)</span>
+        <span className="f-text block text-[12px] uppercase tracking-wide text-neutral-500">
+          {isPreset ? "Σημείωμα του προγράμματος (προαιρετικό)" : "Σημείωμα για τον πελάτη (προαιρετικό)"}
+        </span>
         <textarea value={note} maxLength={1000} rows={2}
           onChange={(e) => { setNote(e.target.value); setDirty(true); }}
           placeholder="π.χ. Την πρώτη εβδομάδα κράτα τα κιλά χαμηλά."
@@ -4669,7 +4764,7 @@ function ProgramEditor({ client, flash, onAuthFail, onClose, onSaved }) {
 
       <div className="sticky bottom-0 z-10 mt-6 flex flex-wrap gap-2 border-t-2 border-black bg-white py-3">
         <Button onClick={save} disabled={busy} className="flex-1">{busy ? "Αποθήκευση…" : "Αποθήκευση"}</Button>
-        {savedAt && <Button variant="danger" onClick={remove} disabled={busy}>Διαγραφή</Button>}
+        {(savedAt || (isPreset && id)) && <Button variant="danger" onClick={remove} disabled={busy}>Διαγραφή</Button>}
       </div>
     </div>
   );
@@ -4762,61 +4857,229 @@ function ClientAutocomplete({ onPick, onAuthFail }) {
   );
 }
 
+/* Το πρόγραμμα που έφτιαξε μόνος του ο πελάτης. Η διαχείριση το βλέπει,
+   δεν το αλλάζει — είναι δικό του. */
+function OwnPlanViewer({ client, flash, onAuthFail, onClose }) {
+  const [data, setData] = useState(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data: d, error } = await rpc("admin_client_plan", { p_client_id: client.id });
+      if (!alive) return;
+      if (error === "AUTH") { onAuthFail(); return; }
+      if (error) { flash("Δεν φόρτωσε το πρόγραμμα"); setData(null); return; }
+      setData(d || null);
+    })();
+    return () => { alive = false; };
+  }, [client.id, flash, onAuthFail]);
+
+  const days = (data && data.days) || [];
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b-2 border-black pb-3">
+        <div className="min-w-0">
+          <div className="f-text text-[12px] uppercase tracking-wide text-neutral-500">Δικό του πρόγραμμα</div>
+          <div className="f-display truncate text-[22px] font-extrabold uppercase">{client.name}</div>
+          <div className="f-mono mt-0.5 text-[11px] text-neutral-500">
+            {data && data.updated_at ? `Ενημερώθηκε ${fmtChatTime(data.updated_at)}` : ""}
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Κλείσιμο</Button>
+      </div>
+
+      <p className="f-text mt-3 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+        Το έγραψε ο ίδιος στο καρνέ του. Δεν αλλάζει από εδώ — αν θέλεις να του
+        προτείνεις κάτι, φτιάξε του πρόγραμμα γυμναστή.
+      </p>
+
+      {data === undefined ? (
+        <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
+      ) : days.length === 0 ? (
+        <div className="f-text mt-4 border-2 border-dashed border-neutral-300 py-10 text-center text-[15px] text-neutral-500">
+          Δεν έχει δικό του πρόγραμμα πια.
+        </div>
+      ) : (
+        <div className="mt-5 space-y-4">
+          {days.map((d, di) => (
+            <section key={di} className="border-2 border-black">
+              <div className="flex items-center justify-between gap-3 border-b-2 border-black px-4 py-3">
+                <span className="f-display text-[16px] font-bold uppercase tracking-wide">
+                  {di + 1}. {d.name || `Μέρα ${di + 1}`}
+                </span>
+                <span className="f-mono shrink-0 text-[12px] text-neutral-500">
+                  {d.kind === "cardio" ? "Καρντιό" : d.kind === "walk" ? "Περπάτημα" : "Βάρη"}
+                </span>
+              </div>
+              {d.kind !== "lift" ? (
+                <div className="f-text px-4 py-3 text-[13px] text-neutral-500">Μέρα χωρίς σετ.</div>
+              ) : (
+                <div className="divide-y divide-neutral-200">
+                  {(d.exercises || []).map((e, ei) => (
+                    <div key={ei} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="f-text text-[15px]">{e.name}</div>
+                        {e.note && <div className="f-text text-[12px] text-neutral-500">{e.note}</div>}
+                      </div>
+                      <span className="f-mono shrink-0 text-[12px] text-neutral-600">
+                        {e.sets} × {e.repMin === e.repMax ? e.repMin : `${e.repMin}–${e.repMax}`}
+                        {e.rest ? ` · ${e.rest}″` : ""}
+                        {e.rir && e.rir !== "—" ? ` · RIR ${e.rir}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+      <div className="h-10" />
+    </div>
+  );
+}
+
 function Programs({ flash, onAuthFail }) {
   const [list, setList] = useState(null);
-  const [client, setClient] = useState(null);
+  const [presets, setPresets] = useState(null);
+  const [target, setTarget] = useState(null);
+  const [viewOwn, setViewOwn] = useState(null);
 
   const load = useCallback(async () => {
-    const { data, error } = await rpc("admin_programs", {});
-    if (error === "AUTH") { onAuthFail(); return; }
-    if (error) { flash("Δεν φόρτωσαν τα προγράμματα"); setList([]); return; }
-    setList(data || []);
+    const [prog, pre] = await Promise.all([
+      rpc("admin_programs", {}),
+      rpc("admin_presets", {}),
+    ]);
+    if (prog.error === "AUTH" || pre.error === "AUTH") { onAuthFail(); return; }
+    if (prog.error) { flash("Δεν φόρτωσαν τα προγράμματα"); setList([]); }
+    else setList(prog.data || []);
+    if (pre.error) { flash("Δεν φόρτωσαν τα έτοιμα προγράμματα"); setPresets([]); }
+    else setPresets(pre.data || []);
   }, [flash, onAuthFail]);
 
   useEffect(() => { load(); }, [load]);
 
+  if (target) {
+    return (
+      <div className="px-5 sm:px-6">
+        <ProgramEditor target={target} presets={presets || []}
+          flash={flash} onAuthFail={onAuthFail}
+          onClose={() => setTarget(null)} onSaved={load} />
+      </div>
+    );
+  }
+
+  if (viewOwn) {
+    return (
+      <div className="px-5 sm:px-6">
+        <OwnPlanViewer client={viewOwn} flash={flash} onAuthFail={onAuthFail}
+          onClose={() => setViewOwn(null)} />
+      </div>
+    );
+  }
+
+  const byGoal = (key) => (presets || []).filter((p) => p.goal === key);
+
   return (
     <div className="px-5 sm:px-6">
-      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Προγράμματα προπόνησης</h2>
+      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Προπονήσεις</h2>
       <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
-        Φτιάξε πρόγραμμα για έναν πελάτη. Θα το δει στο καρνέ του ως «Το πρόγραμμα
-        του γυμναστή σου» και θα διαλέξει αν θα το ακολουθήσει. Κάθε αλλαγή που
-        αποθηκεύεις του φτάνει την επόμενη φορά που θα ανοίξει την εφαρμογή.
+        Πάνω φτιάχνεις έτοιμα προγράμματα ανά στόχο. Κάτω διαλέγεις πελάτη και του
+        φτιάχνεις εξατομικευμένο — ή του περνάς ένα έτοιμο και το πειράζεις.
       </p>
 
-      {client ? (
-        <ProgramEditor client={client} flash={flash} onAuthFail={onAuthFail}
-          onClose={() => setClient(null)} onSaved={load} />
-      ) : (
-        <>
-          <h3 className="f-display mt-7 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Νέο ή υπάρχον πρόγραμμα</h3>
-          <div className="max-w-md">
-            <ClientAutocomplete onAuthFail={onAuthFail}
-              onPick={(c) => setClient({ id: c.id, name: c.name })} />
-          </div>
+      {/* ---------- Έτοιμα προγράμματα ---------- */}
+      <h3 className="f-display mt-8 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Έτοιμα προγράμματα</h3>
 
-          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πελάτες με πρόγραμμα</h3>
-          {list === null ? (
-            <div className="f-text py-6 text-[14px] text-neutral-400">Φόρτωση…</div>
-          ) : list.length === 0 ? (
-            <div className="f-text mt-3 border-2 border-dashed border-neutral-300 py-10 text-center text-[15px] text-neutral-500">
-              Δεν έχεις φτιάξει πρόγραμμα για κανέναν ακόμα.
-            </div>
-          ) : (
-            <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
-              {list.map((p) => (
-                <button key={p.client_id} onClick={() => setClient({ id: p.client_id, name: p.name })}
-                  className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-neutral-50">
-                  <span className="client-name f-text truncate text-[15px]">{p.name}</span>
-                  <span className="f-mono shrink-0 text-[12px] text-neutral-500">
-                    {p.days} {p.days === 1 ? "μέρα" : "μέρες"} · {fmtChatTime(p.updated_at)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+      {presets === null ? (
+        <div className="f-text py-6 text-[14px] text-neutral-400">Φόρτωση…</div>
+      ) : (
+        <div className="mt-3 space-y-4">
+          {P_PRIMARY.map(([key, label]) => {
+            const rows = byGoal(key);
+            return (
+              <section key={key} className="border-2 border-black">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black px-4 py-3">
+                  <span className="f-display text-[15px] font-bold uppercase tracking-wide">{label}</span>
+                  <Button variant="outline" size="sm"
+                    onClick={() => setTarget({ kind: "preset", id: null, goal: key, name: "" })}>
+                    + Νέο
+                  </Button>
+                </div>
+                {rows.length === 0 ? (
+                  <div className="f-text px-4 py-4 text-[13px] text-neutral-400">Κανένα έτοιμο πρόγραμμα εδώ.</div>
+                ) : (
+                  <div className="divide-y divide-neutral-200">
+                    {rows.map((p) => (
+                      <button key={p.id}
+                        onClick={() => setTarget({ kind: "preset", id: p.id, goal: p.goal, name: p.name })}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50">
+                        <span className="f-text truncate text-[15px]">{p.name}</span>
+                        <span className="f-mono shrink-0 text-[12px] text-neutral-500">
+                          {p.days} {p.days === 1 ? "μέρα" : "μέρες"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
       )}
+
+      {/* ---------- Εξατομικευμένο ανά πελάτη ---------- */}
+      <h3 className="f-display mt-10 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πρόγραμμα για πελάτη</h3>
+      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+        Γράψε το όνομα και διάλεξέ τον. Θα το δει στο καρνέ του ως «Το πρόγραμμα
+        του γυμναστή σου» και θα διαλέξει αν θα το ακολουθήσει.
+      </p>
+      <div className="mt-3 max-w-md">
+        <ClientAutocomplete onAuthFail={onAuthFail}
+          onPick={(c) => setTarget({ kind: "client", id: c.id, name: c.name })} />
+      </div>
+
+      <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πελάτες με πρόγραμμα</h3>
+      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+        Όσοι έχουν πρόγραμμα από σένα και όσοι έφτιαξαν μόνοι τους δικό τους στο καρνέ.
+      </p>
+      {list === null ? (
+        <div className="f-text py-6 text-[14px] text-neutral-400">Φόρτωση…</div>
+      ) : list.length === 0 ? (
+        <div className="f-text mt-3 border-2 border-dashed border-neutral-300 py-10 text-center text-[15px] text-neutral-500">
+          Κανένας δεν έχει πρόγραμμα ακόμα.
+        </div>
+      ) : (
+        <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
+          {list.map((p) => (
+            <div key={p.client_id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+              <button onClick={() => setTarget({ kind: "client", id: p.client_id, name: p.name })}
+                className="min-w-0 flex-1 text-left hover:underline">
+                <span className="client-name f-text block truncate text-[15px]">{p.name}</span>
+                <span className="f-mono block text-[12px] text-neutral-500">
+                  {p.days
+                    ? `Από σένα · ${p.days} ${p.days === 1 ? "μέρα" : "μέρες"} · ${fmtChatTime(p.updated_at)}`
+                    : "Δεν του έχεις φτιάξει πρόγραμμα"}
+                </span>
+              </button>
+              {p.own && (
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="f-display border border-black px-2 py-1 text-[10px] font-bold uppercase tracking-wide">
+                    Δικό του · {p.own_days} {p.own_days === 1 ? "μέρα" : "μέρες"}
+                  </span>
+                  <Button variant="outline" size="sm"
+                    onClick={() => setViewOwn({ id: p.client_id, name: p.name })}>
+                    Δες το
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="h-10" />
     </div>
   );
 }
