@@ -5103,27 +5103,31 @@ loadAppSettings().then(() => {
       </div>
 
       <div>
-        <div class="panel">
-          <h3>Φορτίο ανά άσκηση</h3>
-          <div class="field">
-            <label for="progress-exercise">Άσκηση</label>
-            <select id="progress-exercise"></select>
+        <details class="panel goal-details">
+          <summary><h3>Φορτίο ανά άσκηση</h3><span class="goal-chev" aria-hidden="true">›</span></summary>
+          <div class="goal-body">
+            <div class="field">
+              <label for="progress-exercise">Άσκηση</label>
+              <select id="progress-exercise"></select>
+            </div>
+            <div id="exercise-chart"></div>
+            <div id="exercise-stats"></div>
           </div>
-          <div id="exercise-chart"></div>
-          <div id="exercise-stats"></div>
-        </div>
+        </details>
 
-        <div class="panel">
-          <h3>Ιστορικό προπονήσεων</h3>
-          <div id="history-list"></div>
-        </div>
+        <details class="panel goal-details">
+          <summary><h3>Ιστορικό προπονήσεων</h3><span class="goal-chev" aria-hidden="true">›</span></summary>
+          <div class="goal-body">
+            <div id="history-list"></div>
+          </div>
+        </details>
       </div>
 
     <div class="panel">
       <h3>Τα δεδομένα σου</h3>
       <div class="app-note" id="export-note" hidden>
         <strong>Άνοιξε τη σελίδα σε browser</strong>
-        <span>Το PDF και το Excel δεν κατεβαίνουν όταν η εφαρμογή είναι ανοιχτή από την αρχική οθόνη. Άνοιξε το Safari ή το Chrome, μπες στη διεύθυνση από κάτω και κάνε από εκεί την εξαγωγή.</span>
+        <span>Το PDF δεν κατεβαίνει όταν η εφαρμογή είναι ανοιχτή από την αρχική οθόνη. Άνοιξε τον σύνδεσμο στο διαδίκτυο για να το κατεβάσεις.</span>
         <code id="export-url"></code>
         <button type="button" class="btn btn-quiet btn-block" id="export-copy">Αντιγραφή διεύθυνσης</button>
       </div>
@@ -8531,10 +8535,6 @@ function __bootWorkout() {
           `<div class="vs vs-target"><span class="vs-label">ΣΤΟΧΟΣ</span><span class="vs-value">${v.target}<small> σετ</small></span></div>` +
           `</div></div>`;
         item.appendChild(barRow(done, v.max));
-        const note = document.createElement('div');
-        note.className = 'volume-note';
-        note.textContent = v.note;
-        item.appendChild(note);
         host.appendChild(item);
       });
     }
