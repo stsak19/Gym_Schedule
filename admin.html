@@ -123,8 +123,8 @@ html, body { margin: 0; background: #fff; }
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-const SUPABASE_URL = "https://sdddhzrbqkfayodyjnnz.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkZGRoenJicWtmYXlvZHlqbm56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4NjUwMzMsImV4cCI6MjEwNDQ0MTAzM30.Y0cQV6tJFltnl2hYKJXzhxzVb0XYOB9DK5xGCkUbEQg";
+const SUPABASE_URL = "https://qkjceupbxdujgytikxug.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFramNldXBieGR1amd5dGlreHVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDI0NTUsImV4cCI6MjEwNDExODQ1NX0.cSsylfCvbqlvYgoeryf08jEVzvTjZGXli4dl7ZE7_Pc";
 const TOKEN_KEY = "kinesis_admin_token";
 const THEME_KEY = "kinesis_admin_theme";
 
@@ -1288,7 +1288,10 @@ function App() {
       <div className="mx-auto flex min-h-screen max-w-[1180px]">
         <main className="min-w-0 flex-1 pb-16">{content}</main>
 
-        <aside className="flex w-[230px] shrink-0 flex-col border-l-2 border-black px-5 py-7">
+        {/* Το πλαϊνό μένει καρφωμένο όσο κυλάει η σελίδα. Το ύψος
+            διαιρείται με την κλίμακα, γιατί το zoom μεγαλώνει και τα vh. */}
+        <aside className="sticky top-0 flex w-[230px] shrink-0 flex-col self-start overflow-y-auto border-l-2 border-black px-5 py-7"
+          style={{ height: `calc(100vh / ${scale})` }}>
           <Logo size={44} className="mb-3" />
           <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
           <div className="f-display mt-1 text-[21px] font-extrabold uppercase tracking-tight">Διαχείριση</div>
@@ -1528,10 +1531,10 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
     setOpen(focus.time || null);
   }, [focus]);
 
-  /* Δύο εβδομάδες πίσω, για να μπορεί να συμπληρώσει με το χέρι
+  /* Μία μέρα πίσω (η χθεσινή), για να μπορεί να συμπληρώσει με το χέρι
      κάποιον που ήρθε και δεν πέρασε από την εφαρμογή. Μπροστά όσες
      μέρες ανοίγει το πρόγραμμα στον πελάτη — ό,τι λένε οι ρυθμίσεις. */
-  const DAYS_BACK = 14;
+  const DAYS_BACK = 1;
   const days = useMemo(() => {
     const base = new Date(); base.setHours(0, 0, 0, 0);
     return Array.from({ length: MAX_DAYS_AHEAD + 1 + DAYS_BACK },
