@@ -1096,13 +1096,13 @@ function PendingAttendance({ flash, onAuthFail, refreshKey }) {
   if (hidden || rows.length === 0) return null;
 
   return (
-    <div className="mx-5 mt-6 border-2 border-black sm:mx-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-black px-4 py-3 text-white">
+    <div className="mx-5 mt-6 border-2 border-red-600 sm:mx-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-red-600 px-4 py-3 text-white">
         <button onClick={() => setOpen((o) => !o)} className="f-display text-left text-[13px] font-bold uppercase tracking-wide">
-          {rows.length === 1 ? "1 κράτηση χωρίς check-in" : `${rows.length} κρατήσεις χωρίς check-in`} · Ήρθαν;
-          <span className="ml-2 text-neutral-400">{open ? "▲" : "▼"}</span>
+          {rows.length === 1 ? "1 κράτηση ήρθε;" : `${rows.length} κρατήσεις ήρθαν;`}
+          <span className="ml-2 text-red-100">{open ? "▲" : "▼"}</span>
         </button>
-        <button onClick={() => setHidden(true)} className="f-text text-[13px] text-neutral-300 underline">Αργότερα</button>
+        <button onClick={() => setHidden(true)} className="f-text text-[13px] text-red-100 underline">Αργότερα</button>
       </div>
       {open && (
         <div>
@@ -1284,7 +1284,7 @@ function App() {
 
   const content = (
     <React.Fragment>
-      <PendingAttendance {...props} refreshKey={watch.pulse} />
+      {tab === "schedule" && <PendingAttendance {...props} refreshKey={watch.pulse} />}
       {tab === "schedule" && (
         <Schedule {...props} refreshKey={watch.pulse} newItems={watch.items}
           focus={focus} onSeen={watch.dismiss}
