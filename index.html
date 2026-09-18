@@ -3402,11 +3402,13 @@ function SettingsTab({ session, flash, theme, setTheme, onLogout, onAccountDelet
 
       <GoalsPanel workoutOn={workoutOn} setWorkoutOn={setWorkoutOn} />
 
+      <HistoryPanel session={session} />
+
       <PushPanel session={session} flash={flash} />
 
-      <ReviewPanel session={session} flash={flash} />
-
       <AccountPanel session={session} flash={flash} onDeleted={onAccountDeleted} />
+
+      <ReviewPanel session={session} flash={flash} />
 
       <div className="mt-10">
         <Button variant="outline" size="lg" onClick={onLogout}>Έξοδος</Button>
@@ -3445,6 +3447,81 @@ function GoalsPanel({ workoutOn, setWorkoutOn }) {
         </button>
       </div>
     </div>
+  );
+}
+
+/* Κουτί που ανοίγει και κλείνει με ένα πάτημα στον τίτλο. Κλειστό
+   στην αρχή· το περιεχόμενο φτιάχνεται μόνο όταν ανοίξει, οπότε ό,τι
+   φορτώνει από τη βάση φορτώνει τότε και όχι σε κάθε άνοιγμα των
+   Ρυθμίσεων. */
+function Collapsible({ title, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-10 border border-black">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left">
+        <span className="f-display text-[14px] font-bold uppercase tracking-wide">{title}</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+          className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}>
+          <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+/* Ιστορικό κρατήσεων: μόνο όσες πέρασαν από check-in της διαχείρισης.
+   Ακυρώσεις, απουσίες και κρατήσεις που δεν έχουν γίνει ακόμα δεν
+   φαίνονται εδώ. */
+function HistoryPanel({ session }) {
+  return (
+    <Collapsible title="Ιστορικό κρατήσεων">
+      <HistoryList session={session} />
+    </Collapsible>
+  );
+}
+
+function HistoryList({ session }) {
+  const [rows, setRows] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [all, setAll] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await sb.rpc("my_history", { p_client_id: session.clientId });
+      if (!alive) return;
+      if (error) { setFailed(true); setRows([]); return; }
+      setRows(Array.isArray(data) ? data : []);
+    })();
+    return () => { alive = false; };
+  }, [session.clientId]);
+
+  if (rows === null) return <div className="f-text py-4 text-[13px] text-neutral-400">Φόρτωση…</div>;
+  if (failed) return <div className="f-text py-4 text-[13px] text-neutral-500">Δεν φορτώθηκε το ιστορικό.</div>;
+  if (rows.length === 0) return <div className="f-text py-4 text-[13px] text-neutral-500">Δεν υπάρχει ακόμα ιστορικό.</div>;
+
+  const shown = all ? rows : rows.slice(0, 10);
+  return (
+    <>
+      <div className="f-text text-[12px] text-neutral-500">
+        {rows.length === 1 ? "1 προπόνηση" : `${rows.length} προπονήσεις`}
+      </div>
+      <div className="mt-2 divide-y divide-neutral-300 border-y border-black">
+        {shown.map((b) => (
+          <div key={b.id} className="flex items-center justify-between gap-4 py-3">
+            <span className="f-text text-[14px]">{fmtDayLong(b.date)} {parseISO(b.date).getFullYear()}</span>
+            <span className="f-mono text-[16px] tracking-tight">{String(b.time).slice(0, 5)}</span>
+          </div>
+        ))}
+      </div>
+      {rows.length > 10 && (
+        <Button variant="ghost" className="mt-2 w-full" onClick={() => setAll(!all)}>
+          {all ? "Λιγότερες" : `Όλες (${rows.length})`}
+        </Button>
+      )}
+    </>
   );
 }
 
@@ -3495,9 +3572,8 @@ function ReviewPanel({ session, flash }) {
   const empty = !likes.trim() && !dislikes.trim();
 
   return (
-    <div className="mt-10 border border-black p-4">
-      <div className="f-display text-[14px] font-bold uppercase tracking-wide">Η γνώμη σου για την εφαρμογή</div>
-      <p className="f-text mt-2 text-[13px] leading-relaxed text-neutral-600">
+    <Collapsible title="Η γνώμη σου για την εφαρμογή">
+      <p className="f-text text-[13px] leading-relaxed text-neutral-600">
         Πες μας τι σου αρέσει και τι όχι. Το διαβάζει μόνο ο δημιουργός
         της εφαρμογής, για να τη φτιάξει καλύτερη. Φεύγει ανώνυμα —
         χωρίς το όνομα ή το τηλέφωνό σου.
@@ -3534,7 +3610,7 @@ function ReviewPanel({ session, flash }) {
           </div>
         </>
       )}
-    </div>
+    </Collapsible>
   );
 }
 
@@ -3542,7 +3618,15 @@ function ReviewPanel({ session, flash }) {
    να δει την πολιτική, να ανοίξει ή να κλείσει τις ενημερώσεις στο
    email, και να διαγράψει τον λογαριασμό του. Η διαγραφή θέλει τον
    κωδικό του — δεν φτάνει να κρατάει κάποιος το ξεκλείδωτο κινητό. */
-function AccountPanel({ session, flash, onDeleted }) {
+function AccountPanel(props) {
+  return (
+    <Collapsible title="Ο λογαριασμός μου">
+      <AccountBody {...props} />
+    </Collapsible>
+  );
+}
+
+function AccountBody({ session, flash, onDeleted }) {
   const [email, setEmail] = useState("");
   const [marketing, setMarketing] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -3601,9 +3685,7 @@ function AccountPanel({ session, flash, onDeleted }) {
   };
 
   return (
-    <div className="mt-10 border border-black p-4">
-      <div className="f-display text-[14px] font-bold uppercase tracking-wide">Ο λογαριασμός μου</div>
-
+    <>
       {!loaded ? (
         <div className="f-text py-6 text-[13px] text-neutral-400">Φόρτωση…</div>
       ) : (
@@ -3679,7 +3761,7 @@ function AccountPanel({ session, flash, onDeleted }) {
       )}
 
       {policy && <PrivacyPolicy onClose={() => setPolicy(false)} />}
-    </div>
+    </>
   );
 }
 
@@ -4611,39 +4693,6 @@ function PushPanel({ session, flash }) {
     flash("Οι ειδοποιήσεις ενεργοποιήθηκαν");
   };
 
-  const disable = async () => {
-    setBusy(true);
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        await sb.rpc("delete_push_subscription", { p_endpoint: sub.endpoint });
-        await sub.unsubscribe();
-      }
-      setMode("off");
-      flash("Οι ειδοποιήσεις απενεργοποιήθηκαν");
-    } catch (e) {
-      flash("Κάτι πήγε στραβά");
-    }
-    setBusy(false);
-  };
-
-  const test = async () => {
-    setBusy(true);
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(GYM_NAME, {
-        body: "Δοκιμαστική ειδοποίηση. Αν τη βλέπεις, όλα δουλεύουν.",
-        icon: "./icon-192.png",
-        badge: "./icon-192.png",
-        tag: "kinesis-test",
-      });
-    } catch (e) {
-      flash("Δεν εμφανίστηκε");
-    }
-    setBusy(false);
-  };
-
   if (mode === "checking" || mode === "unsupported") return null;
 
   return (
@@ -4664,30 +4713,12 @@ function PushPanel({ session, flash }) {
         </>
       )}
 
-      {mode === "off" && (
-        <>
-          <p className="f-text mt-2 text-[13px] leading-relaxed text-neutral-600">
-            Ενημέρωση όταν ελευθερώνεται θέση από τη λίστα αναμονής, όταν ακυρώνεται
-            κράτησή σου, και υπενθύμιση πριν την προπόνηση.
-          </p>
-          <Button className="mt-4 w-full" disabled={busy} onClick={enable}>
-            {busy ? "…" : "Ενεργοποίηση ειδοποιήσεων"}
-          </Button>
-        </>
-      )}
-
-      {mode === "on" && (
-        <>
-          <p className="f-text mt-2 text-[13px] text-neutral-600">
-            Ενεργές σε αυτή τη συσκευή.
-          </p>
-          <Button variant="outline" className="mt-4 w-full" disabled={busy} onClick={test}>
-            Δοκιμαστική ειδοποίηση
-          </Button>
-          <Button variant="ghost" className="mt-2 w-full" disabled={busy} onClick={disable}>
-            {busy ? "…" : "Απενεργοποίηση"}
-          </Button>
-        </>
+      {/* Ένα κουμπί μόνο. Όταν οι ειδοποιήσεις είναι ήδη ανοιχτές σε
+          αυτή τη συσκευή, μένει γκρι και δεν πατιέται. */}
+      {(mode === "off" || mode === "on") && (
+        <Button className="mt-4 w-full" disabled={busy || mode === "on"} onClick={enable}>
+          {busy ? "…" : "Ενεργοποίηση ειδοποιήσεων"}
+        </Button>
       )}
     </div>
   );
