@@ -1068,7 +1068,7 @@ function PendingAttendance({ flash, onAuthFail, refreshKey }) {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(null);
   const [hidden, setHidden] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const load = useCallback(async () => {
     const { data, error } = await rpc("admin_pending_attendance", {});
