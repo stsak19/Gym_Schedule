@@ -4055,37 +4055,29 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
 }
 
 /* ---------- Στόχοι πελατών ----------
-   Τι δήλωσε ο καθένας στις ρυθμίσεις της εφαρμογής του. Πάνω η
-   σύνοψη ανά στόχο — πατάς έναν και μένουν μόνο όσοι τον έχουν. */
+   Ο κύριος στόχος που δήλωσε ο καθένας στο καρνέ του. Οι παλιοί
+   δευτερεύοντες στόχοι και όσα έγραφαν μόνοι τους δεν επιλέγονται
+   πια από την εφαρμογή, οπότε δεν φαίνονται εδώ. Πατάς έναν στόχο
+   και ανοίγουν από κάτω τα ονόματα όσων τον έχουν. */
 function Goals({ flash, onAuthFail }) {
   const [data, setData] = useState(null);
-  const [filter, setFilter] = useState(null);
+  const [openKey, setOpenKey] = useState(null);
 
   const load = useCallback(async () => {
     const { data: d, error } = await rpc("admin_goals", {});
     if (error === "AUTH") { onAuthFail(); return; }
     if (error) { flash("Δεν φόρτωσαν οι στόχοι"); return; }
-    setData(d || { counts: [], clients: [], with_goals: 0, total_clients: 0 });
+    setData(d || { primary_counts: [], clients: [], total_clients: 0 });
   }, [flash, onAuthFail]);
 
   useEffect(() => { load(); }, [load]);
 
-  const counts = (data && data.counts) || [];
-  const primaryCounts = (data && data.primary_counts) || [];
-  const all = (data && data.clients) || [];
-  const rows = !filter
-    ? all
-    : filter.kind === "primary"
-      ? all.filter((c) => c.primary === filter.key)
-      : all.filter((c) => (c.goals || []).includes(filter.key));
-  const filterName = filter
-    ? (filter.kind === "primary" ? primaryLabel(filter.key) : goalLabel(filter.key))
-    : "";
-  const sameFilter = (kind, key) => !!filter && filter.kind === kind && filter.key === key;
-  const pick = (kind, key) => setFilter(sameFilter(kind, key) ? null : { kind, key });
+  /* Μόνο όσοι έχουν κύριο στόχο που υπάρχει ακόμα στην εφαρμογή. */
+  const withPrimary = ((data && data.clients) || [])
+    .filter((c) => c.primary && PRIMARY_LABELS[c.primary]);
+  const counts = ((data && data.primary_counts) || [])
+    .filter((c) => PRIMARY_LABELS[c.key]);
   const max = counts.reduce((m, c) => Math.max(m, c.count), 0) || 1;
-  const maxPrimary = primaryCounts.reduce((m, c) => Math.max(m, c.count), 0) || 1;
-  const withOther = all.filter((c) => (c.custom && c.custom.length) || c.other).length;
 
   const fmtWhen = (s) => {
     if (!s) return "";
@@ -4097,125 +4089,52 @@ function Goals({ flash, onAuthFail }) {
     <div className="px-5 sm:px-6">
       <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Στόχοι πελατών</h2>
       <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-        Ό,τι δήλωσε ο κάθε πελάτης στις ρυθμίσεις της εφαρμογής του: έναν κύριο
-        στόχο, από τον οποίο βγαίνει το πρόγραμμά του, κι όσους άλλους θέλει.
-        Πάτα έναν στόχο για να δεις μόνο όσους τον έχουν.
+        Ο κύριος στόχος που δήλωσε ο κάθε πελάτης στο καρνέ του. Από αυτόν βγαίνει
+        το πρόγραμμά του. Πάτα έναν στόχο για να δεις ποιοι τον έχουν.
       </p>
 
       {data === null ? (
         <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
-      ) : all.length === 0 ? (
+      ) : withPrimary.length === 0 ? (
         <div className="f-text mt-6 border-2 border-dashed border-neutral-300 py-14 text-center text-[15px] text-neutral-500">
-          Κανείς δεν έχει δηλώσει στόχους ακόμα.
+          Κανείς δεν έχει δηλώσει στόχο ακόμα.
         </div>
       ) : (
         <>
           <div className="mt-7 grid grid-cols-2 gap-3 sm:max-w-md sm:gap-4">
-            <Kpi label="Δήλωσαν στόχους" value={`${data.with_goals} / ${data.total_clients}`} />
-            <Kpi label="Έγραψαν δικό τους" value={withOther} />
+            <Kpi label="Δήλωσαν στόχο" value={`${withPrimary.length} / ${data.total_clients}`} />
           </div>
 
-          {primaryCounts.length > 0 && (
-            <>
-              <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-                Κύριος στόχος
-              </h3>
-              <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-                Αυτός ορίζει το πρόγραμμα που βλέπει ο πελάτης στο καρνέ προπόνησης.
-              </p>
-              <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
-                {primaryCounts.map((c) => (
-                  <button key={c.key} onClick={() => pick("primary", c.key)}
-                    className={`flex w-full items-center gap-3 py-2.5 text-left ${
-                      sameFilter("primary", c.key) ? "bg-neutral-100" : ""}`}>
+          <div className="mt-7 divide-y divide-neutral-200 border-y-2 border-black">
+            {counts.map((c) => {
+              const open = openKey === c.key;
+              const people = open ? withPrimary.filter((x) => x.primary === c.key) : [];
+              return (
+                <div key={c.key}>
+                  <button onClick={() => setOpenKey(open ? null : c.key)} aria-expanded={open}
+                    className={`flex w-full items-center gap-3 py-2.5 text-left ${open ? "bg-neutral-100" : "hover:bg-neutral-50"}`}>
                     <span className="f-text w-[40%] shrink-0 truncate text-[14px]">{primaryLabel(c.key)}</span>
-                    <span className="block h-[12px] flex-1 border border-black">
-                      <span className="block h-full bg-black" style={{ width: `${(c.count / maxPrimary) * 100}%` }} />
-                    </span>
-                    <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {counts.length > 0 && (
-            <>
-              <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-                Τι άλλο διάλεξαν
-              </h3>
-              <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
-                {counts.map((c) => (
-                  <button key={c.key} onClick={() => pick("goal", c.key)}
-                    className={`flex w-full items-center gap-3 py-2.5 text-left ${
-                      sameFilter("goal", c.key) ? "bg-neutral-100" : ""}`}>
-                    <span className="f-text w-[40%] shrink-0 truncate text-[14px]">{goalLabel(c.key)}</span>
                     <span className="block h-[12px] flex-1 border border-black">
                       <span className="block h-full bg-black" style={{ width: `${(c.count / max) * 100}%` }} />
                     </span>
                     <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
+                    <span className="f-display w-4 shrink-0 text-center text-neutral-400">{open ? "−" : "+"}</span>
                   </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {(data.custom_counts || []).length > 0 && (
-            <>
-              <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-                Όσα έγραψαν μόνοι τους
-              </h3>
-              <p className="f-text mt-1 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-                Δεν είναι στη λίστα μας. Αν κάτι επαναλαμβάνεται, αξίζει να μπει.
-              </p>
-              <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
-                {(data.custom_counts || []).map((c, i) => (
-                  <div key={i} className="flex items-center justify-between gap-3 py-2.5">
-                    <span className="f-text min-w-0 flex-1 text-[14px]">{c.text}</span>
-                    <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="mt-9 flex items-baseline justify-between gap-3">
-            <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-              Ανά πελάτη {filter && `· ${filterName}`}
-            </h3>
-            {filter && (
-              <Button variant="ghost" size="sm" onClick={() => setFilter(null)}>Καθαρισμός φίλτρου</Button>
-            )}
-          </div>
-
-          <div className="mt-3 divide-y divide-neutral-200 border-y-2 border-black">
-            {rows.map((c) => (
-              <div key={c.id} className="py-3.5">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="f-text text-[15px]">{c.name}</div>
-                  <span className="f-mono shrink-0 text-[12px] text-neutral-400">
-                    {c.phone}{c.updated_at ? ` · ${fmtWhen(c.updated_at)}` : ""}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {c.primary && (
-                    <span className="f-display border border-black bg-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-                      {primaryLabel(c.primary)}
-                    </span>
+                  {open && (
+                    <div className="divide-y divide-neutral-200 border-t border-neutral-300 bg-neutral-50 px-4">
+                      {people.map((p) => (
+                        <div key={p.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2.5">
+                          <span className="f-text text-[15px]">{p.name}</span>
+                          <span className="f-mono shrink-0 text-[12px] text-neutral-500">
+                            {p.phone}{p.updated_at ? ` · ${fmtWhen(p.updated_at)}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  {(c.goals || []).map((g) => (
-                    <span key={g} className="f-display border border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
-                      {goalLabel(g)}
-                    </span>
-                  ))}
-                  {(c.custom && c.custom.length ? c.custom : c.other ? [c.other] : []).map((v, i) => (
-                    <span key={"c" + i} className="f-display border border-dashed border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
-                      {v}
-                    </span>
-                  ))}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
