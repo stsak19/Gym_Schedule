@@ -9,10 +9,25 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.3"></script>
+<script>
+  /* Στο κινητό το hover «κολλάει» μετά το πάτημα και το κουμπί μένει
+     μαύρο. Έτσι τα hover ισχύουν μόνο όπου υπάρχει ποντίκι. */
+  tailwind.config = { future: { hoverOnlyWhenSupported: true } };
+</script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Text:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800;900&family=Space+Mono:wght@400;700&display=swap');
 html, body { margin: 0; background: #fff; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { -webkit-tap-highlight-color: transparent; }
+
+/* ── Κινητό ───────────────────────────────────────────────
+   Το Safari του iPhone κάνει zoom σε κάθε πεδίο με γράμματα κάτω από
+   16px, και η σελίδα μένει μεγεθυμένη. Σε οθόνες αφής τα πεδία
+   παίρνουν 16px και το zoom δεν γίνεται. */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}
 .gym-root { font-family: 'Big Shoulders Text', system-ui, sans-serif; }
 .f-display { font-family: 'Big Shoulders Display', system-ui, sans-serif; letter-spacing: 0.005em; }
 .f-mono { font-family: 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
@@ -50,7 +65,9 @@ html, body { margin: 0; background: #fff; }
 
 /* Τα ονόματα στη λίστα πελατών: γκρι αντί για άσπρο, να μη φωνάζουν. */
 [data-theme="dark"] .client-name { color: #B4B4B4 !important; }
+@media (hover: hover) and (pointer: fine) {
 [data-theme="dark"] .hover\:bg-neutral-50:hover { background-color: #161616 !important; }
+}
 
 /* Τα κουμπιά με περίγραμμα χάνονταν στο σκούρο. Τους δίνουμε γκρι
    γέμισμα ώστε να διαβάζονται ως κουμπιά. */
@@ -60,11 +77,13 @@ html, body { margin: 0; background: #fff; }
 [data-theme="dark"] button.border-2.bg-white:active { background-color: #F2F2F2 !important; }
 
 /* Τα hover δεν τα πιάνουν οι κανόνες πιο πάνω — τα γυρίζουμε κι αυτά. */
+@media (hover: hover) and (pointer: fine) {
 [data-theme="dark"] .hover\:bg-black:hover { background-color: #F2F2F2 !important; }
 [data-theme="dark"] .hover\:text-white:hover { color: #0C0C0C !important; }
 [data-theme="dark"] .hover\:text-black:hover { color: #F2F2F2 !important; }
 [data-theme="dark"] .hover\:border-black:hover { border-color: #8A8A8A !important; }
 [data-theme="dark"] .hover\:bg-neutral-800:hover { background-color: #D6D6D6 !important; }
+}
 [data-theme="dark"] .disabled\:bg-neutral-200:disabled { background-color: #2A2A2A !important; }
 [data-theme="dark"] .disabled\:text-neutral-400:disabled { color: #6E6E6E !important; }
 [data-theme="dark"] .disabled\:border-neutral-200:disabled { border-color: #2E2E2E !important; }
@@ -946,7 +965,7 @@ function IconTextSize({ scale = 1 }) {
 }
 
 function Button({ children, onClick, variant = "primary", disabled, className = "", size = "md" }) {
-  const base = "f-display inline-flex items-center justify-center border-2 border-black font-bold uppercase tracking-wide transition-colors select-none";
+  const base = "f-display inline-flex items-center justify-center border-2 border-black font-bold uppercase tracking-wide transition-colors select-none active:opacity-70";
   const sizes = { md: "h-12 px-5 text-[15px]", sm: "h-9 px-3 text-[13px]", lg: "h-14 px-6 text-[17px] w-full" };
   const variants = {
     primary: "bg-black text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400 disabled:border-neutral-200",
@@ -1015,12 +1034,12 @@ function Stepper({ value, onChange, min = 0, max = 200, suffix = "", step = 1, f
   return (
     <div className="flex items-center gap-1">
       <button onClick={() => onChange(Math.max(min, value - step))}
-        className="f-display h-10 w-10 border-2 border-black text-lg font-bold hover:bg-black hover:text-white">−</button>
-      <div className="f-mono w-[84px] text-center text-[16px]">
+        className="f-display h-11 w-11 border-2 border-black text-lg font-bold hover:bg-black hover:text-white active:bg-black active:text-white sm:h-10 sm:w-10">−</button>
+      <div className="f-mono w-[66px] text-center text-[16px] sm:w-[84px]">
         {format ? format(value) : `${value}${suffix}`}
       </div>
       <button onClick={() => onChange(Math.min(max, value + step))}
-        className="f-display h-10 w-10 border-2 border-black text-lg font-bold hover:bg-black hover:text-white">+</button>
+        className="f-display h-11 w-11 border-2 border-black text-lg font-bold hover:bg-black hover:text-white active:bg-black active:text-white sm:h-10 sm:w-10">+</button>
     </div>
   );
 }
@@ -1039,7 +1058,7 @@ function fmtMinutes(m) {
 function Toast({ msg }) {
   if (!msg) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-8 z-50 flex justify-center px-5">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(2rem+env(safe-area-inset-bottom))] z-50 flex justify-center px-5">
       <div className="f-display border-2 border-black bg-black px-4 py-3 text-[14px] font-bold uppercase tracking-wide text-white">{msg}</div>
     </div>
   );
@@ -1316,37 +1335,42 @@ function App() {
     return (
       <div style={FONT} className="gym-root min-h-screen bg-white text-black">
         {/* Η κεφαλίδα και οι επιλογές μένουν καρφωμένες στην κορυφή
-            όσο κυλάει το περιεχόμενο από κάτω. */}
-        <div className="sticky top-0 z-40 bg-white">
-          <header className="flex items-center justify-between border-b-2 border-black px-5 pb-4 pt-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <Logo size={38} />
+            όσο κυλάει το περιεχόμενο από κάτω. Δύο γραμμές: πάνω το
+            όνομα με ήχο, καμπάνα και μηνύματα, από κάτω το μενού με την
+            έξοδο. Σε μία γραμμή δεν χωρούσαν και ο τίτλος κοβόταν. */}
+        <div className="sticky top-0 z-40 border-b-2 border-black bg-white">
+          <header className="flex items-center justify-between gap-3 px-4 pb-2.5 pt-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <Logo size={34} />
               <div className="min-w-0">
-                <div className="f-display truncate text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
-                <div className="f-display mt-1 text-[19px] font-extrabold uppercase">Διαχείριση</div>
+                <div className="f-display truncate text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
+                <div className="f-display truncate text-[18px] font-extrabold uppercase leading-tight">Διαχείριση</div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <SoundSwitch on={sound} onToggle={toggleSound} />
               <Bell count={watch.unseen} active={bellOpen} onClick={toggleBell} />
               <ChatButton count={chat.unread} active={tab === "chat" && !bellOpen} off={chatOn === false} onClick={openChat} />
-              <Button variant="ghost" size="sm" onClick={logout}>Έξοδος</Button>
             </div>
           </header>
 
-          <div className="relative border-b-2 border-black bg-white px-5 py-3">
-            <select value={tab} onChange={(e) => setTab(e.target.value)}
-              className="f-display h-12 w-full appearance-none border-2 border-black bg-white px-4 text-[14px] font-bold uppercase tracking-wide outline-none">
-              {TABS.map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
-              ))}
-              {/* Τα μηνύματα ανοίγουν από το εικονίδιο πάνω. Η κρυφή επιλογή
-                  υπάρχει μόνο για να γράφει σωστά η λίστα όσο είναι ανοιχτά. */}
-              {tab === "chat" && <option value="chat" hidden>Μηνύματα</option>}
-            </select>
-            {somethingNew && tab !== "schedule" && (
-              <Dot className="pointer-events-none absolute right-9 top-1/2 -translate-y-1/2" />
-            )}
+          <div className="flex items-center gap-2 px-4 pb-3">
+            <div className="relative min-w-0 flex-1">
+              <select value={tab} onChange={(e) => setTab(e.target.value)} aria-label="Ενότητα"
+                className="f-display h-11 w-full appearance-none border-2 border-black bg-white pl-3 pr-9 text-[14px] font-bold uppercase tracking-wide outline-none">
+                {TABS.map(([k, label]) => (
+                  <option key={k} value={k}>{label}</option>
+                ))}
+                {/* Τα μηνύματα ανοίγουν από το εικονίδιο πάνω. Η κρυφή επιλογή
+                    υπάρχει μόνο για να γράφει σωστά η λίστα όσο είναι ανοιχτά. */}
+                {tab === "chat" && <option value="chat" hidden>Μηνύματα</option>}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px]">▼</span>
+              {somethingNew && tab !== "schedule" && (
+                <Dot className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2" />
+              )}
+            </div>
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={logout}>Έξοδος</Button>
           </div>
         </div>
 
@@ -1811,7 +1835,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                     ) : (
                       <div className="divide-y divide-neutral-200">
                         {people.map((p) => (
-                          <div key={p.booking_id} className="flex items-center justify-between gap-3 py-3">
+                          <div key={p.booking_id} className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 {fresh.ids.has(p.booking_id) && <Dot />}
@@ -1827,7 +1851,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                 <div className="f-text text-[12px] text-neutral-500">Check-in από τις {opensLabel}</div>
                               )}
                             </div>
-                            <div className="flex shrink-0 gap-2">
+                            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
                               <Button size="sm" variant={p.status === "checked_in" ? "outline" : "primary"}
                                 disabled={p.status !== "checked_in" && tooEarly}
                                 onClick={() => setStatus(p.booking_id, p.status === "checked_in" ? "booked" : "checked_in")}>
@@ -2045,10 +2069,10 @@ function Hours({ flash, onAuthFail }) {
           })}
         </div>
       ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 grid grid-cols-7 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
           {DAYS.map((label, i) => (
             <button key={i} onClick={() => setWeekday(i)}
-              className={`f-display border-2 px-4 py-2.5 text-[13px] font-bold uppercase ${
+              className={`f-display border-2 px-0 py-2.5 text-[12px] font-bold uppercase sm:px-4 sm:text-[13px] ${
                 weekday === i ? "border-black bg-black text-white" : "border-neutral-300 hover:border-black"}`}>
               {label}
             </button>
@@ -2122,16 +2146,16 @@ function HourRow({ slot, scope, onSave }) {
 
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 py-3 ${closed ? "opacity-60" : ""}`}>
-      <div>
+      <div className="min-w-0">
         <span className="f-mono block text-[17px] leading-none">{slot.slot_time}</span>
         <span className="f-text text-[12px] text-neutral-400">
           {closed ? "Κλειστή — δεν φαίνεται στους πελάτες" : `${slot.taken} κρατήσεις`}
         </span>
       </div>
-      <div className="flex items-center gap-3">
-        <Stepper value={val} min={scope === "weekday" ? 0 : slot.taken} max={80} onChange={setVal} />
-        <Button size="sm" disabled={!dirty} onClick={() => onSave(slot.slot_time, val)}>Αποθήκευση</Button>
-      </div>
+      <Stepper value={val} min={scope === "weekday" ? 0 : slot.taken} max={80} onChange={setVal} />
+      {/* Στο κινητό δεν χωράει δίπλα: φαίνεται από κάτω, μόνο όταν αλλάξει κάτι. */}
+      <Button size="sm" disabled={!dirty} onClick={() => onSave(slot.slot_time, val)}
+        className={dirty ? "w-full sm:w-auto" : "hidden sm:inline-flex"}>Αποθήκευση</Button>
     </div>
   );
 }
@@ -3412,8 +3436,8 @@ function People({ flash, onAuthFail }) {
         <div className="mt-5 divide-y divide-neutral-300 border-y-2 border-black">
           {rows.map((r) => (
             <button key={r.id} onClick={() => openClient(r)}
-              className="flex w-full items-center justify-between gap-4 py-4 text-left hover:bg-neutral-50">
-              <div className="min-w-0">
+              className="flex w-full flex-col gap-1.5 py-4 text-left hover:bg-neutral-50 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="w-full min-w-0 sm:w-auto">
                 <div className="client-name f-text truncate text-[15px]">{r.name}</div>
                 <div className="f-mono text-[12px] text-neutral-500">{r.phone}</div>
                 {r.email && <div className="f-mono truncate text-[12px] text-neutral-400">{r.email}</div>}
@@ -3582,7 +3606,7 @@ function Access({ flash, onAuthFail }) {
         <div className="mt-2 flex gap-2">
           <input value={url} onChange={(e) => { setUrl(e.target.value); setGuessed(false); }}
             placeholder="https://…/index.html"
-            className="f-mono h-12 flex-1 border-2 border-black px-4 text-[14px] outline-none" />
+            className="f-mono h-12 min-w-0 flex-1 border-2 border-black px-3 text-[14px] outline-none sm:px-4" />
           <Button onClick={save}>Αποθήκευση</Button>
         </div>
         {guessed && (
@@ -3996,8 +4020,8 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
   if (!s) return <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>;
 
   const Row = ({ label, hint, children }) => (
-    <div className="flex flex-wrap items-center justify-between gap-3 py-4">
-      <div>
+    <div className="flex items-center justify-between gap-3 py-4">
+      <div className="min-w-0">
         <div className="f-text text-[15px]">{label}</div>
         {hint && <div className="f-text mt-0.5 text-[12px] text-neutral-500">{hint}</div>}
       </div>
@@ -4190,8 +4214,8 @@ function Goals({ flash, onAuthFail }) {
                 <div key={c.key}>
                   <button onClick={() => setOpenKey(open ? null : c.key)} aria-expanded={open}
                     className={`flex w-full items-center gap-3 py-2.5 text-left ${open ? "bg-neutral-100" : "hover:bg-neutral-50"}`}>
-                    <span className="f-text w-[40%] shrink-0 truncate text-[14px]">{primaryLabel(c.key)}</span>
-                    <span className="block h-[12px] flex-1 border border-black">
+                    <span className="f-text min-w-0 flex-1 truncate text-[14px] sm:w-[40%] sm:flex-none">{primaryLabel(c.key)}</span>
+                    <span className="block h-[12px] w-[26%] shrink-0 border border-black sm:w-auto sm:flex-1">
                       <span className="block h-full bg-black" style={{ width: `${(c.count / max) * 100}%` }} />
                     </span>
                     <span className="f-mono w-8 shrink-0 text-right text-[13px]">{c.count}</span>
@@ -4715,7 +4739,7 @@ function ProgramEditor({ target, presets, flash, onAuthFail, onClose, onSaved })
                   const kind = e.target.value;
                   setDay(di, { kind, exercises: kind === "lift" && !d.exercises.length ? [pBlankEx()] : d.exercises });
                 }}
-                className={P_INPUT + " w-auto"} aria-label="Είδος μέρας">
+                className={P_INPUT + " w-auto flex-1 sm:flex-none"} aria-label="Είδος μέρας">
                 {P_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
               <div className="flex gap-1">
@@ -5054,7 +5078,7 @@ function Programs({ flash, onAuthFail }) {
           {list.map((p) => (
             <div key={p.client_id} className="flex flex-wrap items-center justify-between gap-2 py-3">
               <button onClick={() => setTarget({ kind: "client", id: p.client_id, name: p.name })}
-                className="min-w-0 flex-1 text-left hover:underline">
+                className="w-full min-w-0 text-left hover:underline sm:w-auto sm:flex-1">
                 <span className="client-name f-text block truncate text-[15px]">{p.name}</span>
                 <span className="f-mono block text-[12px] text-neutral-500">
                   {p.days
@@ -5381,7 +5405,11 @@ function ChatThread({ client, flash, onAuthFail, onBack, onChanged, onDeleted, i
   const rows = Math.min(5, Math.max(2, text.split("\n").length));
 
   return (
-    <div className="flex flex-col border-2 border-black" style={{ height: "68vh", minHeight: 360 }}>
+    <div className="flex flex-col border-2 border-black"
+      style={isDesktop
+        ? { height: "68vh", minHeight: 360 }
+        /* Στο κινητό γεμίζει την οθόνη κάτω από την κεφαλίδα. */
+        : { height: `calc(100dvh / ${readScale()} - 150px)`, minHeight: 320 }}>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b-2 border-black px-4 py-3">
         <div className="min-w-0">
           {!isDesktop && (
@@ -5595,13 +5623,19 @@ function Chat({ flash, onAuthFail, isDesktop, pulse, onChanged, openClientRef, c
 
   return (
     <div className="px-5 sm:px-6">
-      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Μηνύματα</h2>
-      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
-        Συζητήσεις με τους πελάτες. Ό,τι γράφεις φτάνει σαν ειδοποίηση στο κινητό τους.
-        Τα μηνύματα σβήνονται μόνα τους 48 ώρες μετά.
-      </p>
+      {/* Στο κινητό, με ανοιχτή συζήτηση, φεύγουν τίτλος και διακόπτης
+          για να πάρει η συζήτηση όλη την οθόνη. */}
+      {(isDesktop || !thread) && (
+        <>
+          <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Μηνύματα</h2>
+          <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+            Συζητήσεις με τους πελάτες. Ό,τι γράφεις φτάνει σαν ειδοποίηση στο κινητό τους.
+            Τα μηνύματα σβήνονται μόνα τους 48 ώρες μετά.
+          </p>
 
-      <ChatSwitch on={chatOn} saving={chatSaving} onToggle={onToggleChat} />
+          <ChatSwitch on={chatOn} saving={chatSaving} onToggle={onToggleChat} />
+        </>
+      )}
 
       {isDesktop ? (
         <div className="mt-6 grid grid-cols-[300px_minmax(0,1fr)] items-start gap-6">
@@ -5614,7 +5648,7 @@ function Chat({ flash, onAuthFail, isDesktop, pulse, onChanged, openClientRef, c
           )}
         </div>
       ) : (
-        <div className="mt-6">{thread || listView}</div>
+        <div className={thread ? "mt-4" : "mt-6"}>{thread || listView}</div>
       )}
       <div className="h-10" />
     </div>
