@@ -1058,6 +1058,79 @@ const TABS = [
   ["settings", "Ρυθμίσεις"],
 ];
 
+/* ---------- Ήρθε; ----------
+   Κρατήσεις από προηγούμενες μέρες που δεν πήραν ούτε check-in ούτε
+   ακύρωση. Ο διαχειριστής απαντά για καθεμία: «Ήρθε» γράφει check-in
+   στην ώρα της κράτησης, «Δεν ήρθε» επιστρέφει την κράτηση στο πακέτο
+   του πελάτη (admin_resolve_attendance). Μέχρι να απαντήσει, η κράτηση
+   μένει χρεωμένη. */
+function PendingAttendance({ flash, onAuthFail, refreshKey }) {
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const [hidden, setHidden] = useState(false);
+  const [open, setOpen] = useState(true);
+
+  const load = useCallback(async () => {
+    const { data, error } = await rpc("admin_pending_attendance", {});
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) return;
+    setRows(data || []);
+  }, [onAuthFail]);
+
+  useEffect(() => { load(); }, [load, refreshKey]);
+  // Στις αλλαγές ημέρας ξαναρωτάει μόνο του.
+  useEffect(() => { const t = setInterval(load, 10 * 60 * 1000); return () => clearInterval(t); }, [load]);
+
+  const answer = async (r, came) => {
+    setBusy(r.booking_id);
+    const { data, error } = await rpc("admin_resolve_attendance", { p_booking_id: r.booking_id, p_came: came });
+    setBusy(null);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data?.ok) { flash(data?.error || "Δεν αποθηκεύτηκε"); load(); return; }
+    setRows((prev) => prev.filter((x) => x.booking_id !== r.booking_id));
+    flash(came ? `${r.name}: check-in` : data.refunded
+      ? `${r.name}: η κράτηση επέστρεψε στο πακέτο`
+      : `${r.name}: σημειώθηκε ότι δεν ήρθε`);
+  };
+
+  if (hidden || rows.length === 0) return null;
+
+  return (
+    <div className="mx-5 mt-6 border-2 border-black sm:mx-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-black px-4 py-3 text-white">
+        <button onClick={() => setOpen((o) => !o)} className="f-display text-left text-[13px] font-bold uppercase tracking-wide">
+          {rows.length === 1 ? "1 κράτηση χωρίς check-in" : `${rows.length} κρατήσεις χωρίς check-in`} · Ήρθαν;
+          <span className="ml-2 text-neutral-400">{open ? "▲" : "▼"}</span>
+        </button>
+        <button onClick={() => setHidden(true)} className="f-text text-[13px] text-neutral-300 underline">Αργότερα</button>
+      </div>
+      {open && (
+        <div>
+          <p className="f-text px-4 pt-3 text-[13px] leading-relaxed text-neutral-500">
+            «Δεν ήρθε» επιστρέφει την κράτηση στο πακέτο του πελάτη. Μέχρι να απαντήσεις, μένει χρεωμένη.
+          </p>
+          <div className="max-h-[360px] divide-y divide-neutral-200 overflow-y-auto px-4 pb-2">
+            {rows.map((r) => (
+              <div key={r.booking_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <div className="f-text truncate text-[15px] font-semibold">{r.name}</div>
+                  <div className="f-mono text-[13px] text-neutral-500">
+                    {fmtDay(r.date)} · {r.time}{!r.refundable && " · εκτός πακέτου"}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={busy === r.booking_id} onClick={() => answer(r, true)}>Ήρθε</Button>
+                  <Button size="sm" variant="outline" disabled={busy === r.booking_id} onClick={() => answer(r, false)}>Δεν ήρθε</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [authed, setAuthed] = useState(hasSession);
   const [checking, setChecking] = useState(hasSession);
@@ -1211,6 +1284,7 @@ function App() {
 
   const content = (
     <React.Fragment>
+      <PendingAttendance {...props} refreshKey={watch.pulse} />
       {tab === "schedule" && (
         <Schedule {...props} refreshKey={watch.pulse} newItems={watch.items}
           focus={focus} onSeen={watch.dismiss}
@@ -2395,6 +2469,7 @@ const CREDIT_KIND = {
   renew: "Ανανέωση πακέτου",
   use: "Κράτηση",
   refund: "Επιστροφή (ακύρωση)",
+  noshow: "Επιστροφή (δεν ήρθε)",
   adjust: "Διόρθωση συνόλου",
 };
 const CREDIT_ROLE = { anon: "Πελάτης", authenticated: "Γραμματεία", service_role: "Σύστημα", system: "Σύστημα" };
@@ -2452,7 +2527,7 @@ const PDF_LINE = "#BDBDBD";
 const PDF_ZEBRA = "#F3F3F3";
 const PDF_RED = "#B42318";
 const PDF_RED_BG = "#FDECEA";
-const KIND_COLOR = { use: PDF_INK, refund: "#1B7F3B", renew: "#1F4E99", adjust: "#8A5A00" };
+const KIND_COLOR = { use: PDF_INK, refund: "#1B7F3B", noshow: "#1B7F3B", renew: "#1F4E99", adjust: "#8A5A00" };
 
 const pdfGrid = {
   fillColor: (row) => (row === 0 ? PDF_INK : row % 2 === 0 ? PDF_ZEBRA : null),
@@ -3052,7 +3127,7 @@ function People({ flash, onAuthFail }) {
     load();
   };
 
-  const label = { checked_in: "Παρών", cancelled: "Ακυρώθηκε", booked: "Κρατημένο" };
+  const label = { checked_in: "Παρών", cancelled: "Ακυρώθηκε", booked: "Κρατημένο", no_show: "Δεν ήρθε" };
 
   if (sel) {
     return (
@@ -3152,9 +3227,11 @@ function People({ flash, onAuthFail }) {
                 Αν ο πελάτης ξέχασε τον κωδικό του, φτιάξε καινούριο εδώ και δώσ' του τον.
                 Ο παλιός παύει να δουλεύει αμέσως.
               </p>
-              <Button variant="outline" className="mt-4" onClick={() => { setPinOpen(true); setNewPin(""); }}>
-                🔑 Επαναφορά κωδικού
-              </Button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => { setPinOpen(true); setNewPin(""); }}>
+                  Επεξεργασία κωδικού
+                </Button>
+              </div>
             </>
           ) : newPin ? (
             <div className="mt-3 border-2 border-black p-4">
