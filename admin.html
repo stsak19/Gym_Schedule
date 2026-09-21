@@ -1735,10 +1735,11 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
     setOpen(focus.time || null);
   }, [focus]);
 
-  /* Μία μέρα πίσω (η χθεσινή), για να μπορεί να συμπληρώσει με το χέρι
-     κάποιον που ήρθε και δεν πέρασε από την εφαρμογή. Μπροστά όσες
-     μέρες ανοίγει το πρόγραμμα στον πελάτη — ό,τι λένε οι ρυθμίσεις. */
-  const DAYS_BACK = 1;
+  /* Μία βδομάδα πίσω, για να βλέπει τι έγινε τις προηγούμενες μέρες και
+     να συμπληρώνει με το χέρι όποιον ήρθε χωρίς να περάσει από την
+     εφαρμογή. Μπροστά όσες μέρες ανοίγει το πρόγραμμα στον πελάτη —
+     ό,τι λένε οι ρυθμίσεις. */
+  const DAYS_BACK = 7;
   const days = useMemo(() => {
     const base = new Date(); base.setHours(0, 0, 0, 0);
     return Array.from({ length: MAX_DAYS_AHEAD + 1 + DAYS_BACK },
@@ -1840,10 +1841,15 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
       <div ref={stripRef} className="flex gap-2 overflow-x-auto px-5 pb-2 pt-6 sm:px-6">
         {days.map((dd0) => {
           const dd = parseISO(dd0), on = dd0 === date, isToday = dd0 === todayISO;
+          /* Οι περασμένες μέρες πιο σβηστές, ώστε με μια βδομάδα πίσω
+             στη λωρίδα να ξεχωρίζει αμέσως πού είναι το σήμερα. */
+          const past = dd0 < todayISO;
           return (
             <button key={dd0} data-day={dd0} onClick={() => pickDay(dd0)}
               className={`relative flex h-[62px] w-[56px] shrink-0 flex-col items-center justify-center border-2 ${
-                on ? "border-black bg-black text-white" : "border-neutral-300 bg-white text-neutral-700 hover:border-black"}`}>
+                on ? "border-black bg-black text-white"
+                   : past ? "border-neutral-200 bg-white text-neutral-400 hover:border-black"
+                          : "border-neutral-300 bg-white text-neutral-700 hover:border-black"}`}>
               <span className="f-text text-[10px] uppercase text-neutral-400">{DAYS[dd.getDay()]}</span>
               <span className="f-mono mt-1 text-[16px] leading-none">{dd.getDate()}</span>
               {isToday && <span className={`absolute bottom-1.5 h-[3px] w-[3px] rounded-full ${on ? "bg-white" : "bg-black"}`} />}
