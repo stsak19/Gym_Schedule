@@ -1150,6 +1150,85 @@ function PendingAttendance({ flash, onAuthFail, refreshKey }) {
   );
 }
 
+/* ---------- Νέες εγγραφές ----------
+   Όποιος γράφεται από την εφαρμογή δεν μπαίνει μέσα: μένει εδώ μέχρι
+   να τον δεχτεί ο διαχειριστής. «Έγκριση» του ανοίγει την εφαρμογή,
+   «Διαγραφή» σβήνει την εγγραφή και το κινητό ελευθερώνεται ξανά. */
+function PendingSignups({ rows, onChanged, flash, onAuthFail }) {
+  const [busy, setBusy] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+
+  if (!rows || rows.length === 0) return null;
+
+  const approve = async (r) => {
+    setBusy(r.id);
+    const { data, error } = await rpc("admin_approve_client", { p_client_id: r.id });
+    setBusy(null);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data?.ok) { flash(data?.error || "Δεν έγινε η έγκριση"); return; }
+    flash(`${r.name}: μπορεί τώρα να μπει στην εφαρμογή`);
+    setConfirm(null);
+    onChanged();
+  };
+
+  const reject = async (r) => {
+    setBusy(r.id);
+    const { data, error } = await rpc("admin_reject_client", { p_client_id: r.id });
+    setBusy(null);
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error || !data?.ok) { flash(data?.error || "Δεν διαγράφηκε"); return; }
+    flash(`${r.name}: η εγγραφή διαγράφηκε`);
+    setConfirm(null);
+    onChanged();
+  };
+
+  return (
+    <div className="mx-5 mt-6 border-2 border-black sm:mx-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-black px-4 py-3 text-white">
+        <div className="f-display text-[13px] font-bold uppercase tracking-wide">
+          {rows.length === 1 ? "1 νέα εγγραφή" : `${rows.length} νέες εγγραφές`}
+        </div>
+        <div className="f-text text-[13px] text-neutral-300">Περιμένουν έγκριση</div>
+      </div>
+      <p className="f-text px-4 pt-3 text-[13px] leading-relaxed text-neutral-500">
+        Μέχρι να τους δεχτείς δεν μπαίνουν στην εφαρμογή και δεν κάνουν κρατήσεις.
+      </p>
+      <div className="max-h-[420px] divide-y divide-neutral-200 overflow-y-auto px-4 pb-2">
+        {rows.map((r) => (
+          <div key={r.id} className="py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="f-text truncate text-[15px] font-semibold">{r.name}</div>
+                <div className="f-mono text-[13px] text-neutral-500">{r.phone}</div>
+                {r.email && <div className="f-mono truncate text-[12px] text-neutral-400">{r.email}</div>}
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" disabled={busy === r.id} onClick={() => approve(r)}>Έγκριση</Button>
+                <Button size="sm" variant="outline" disabled={busy === r.id}
+                  onClick={() => setConfirm(confirm === r.id ? null : r.id)}>Διαγραφή</Button>
+              </div>
+            </div>
+            {confirm === r.id && (
+              <div className="mt-3 border-2 border-black p-3">
+                <p className="f-text text-[14px] leading-relaxed">
+                  Να διαγραφεί η εγγραφή του/της <strong>{r.name}</strong>; Το κινητό ελευθερώνεται
+                  και μπορεί να ξαναγραφτεί αργότερα.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" disabled={busy === r.id} onClick={() => reject(r)}>
+                    {busy === r.id ? "Διαγραφή…" : "Ναι, διαγραφή"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>Άκυρο</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [authed, setAuthed] = useState(hasSession);
   const [checking, setChecking] = useState(hasSession);
@@ -1202,6 +1281,28 @@ function App() {
   const logout = () => { signOut(); setAuthed(false); };
 
   const watch = useNewBookings({ enabled: authed && !checking, onAuthFail: onAuthFail, flash: flash });
+
+  /* Οι εγγραφές που περιμένουν έγκριση. Ζουν εδώ ώστε να τις βλέπει
+     και το Ημερολόγιο και οι Πελάτες, και να βγαίνει η κόκκινη βούλα
+     στο μενού όσο υπάρχουν. */
+  const [signups, setSignups] = useState([]);
+  const [signupPulse, setSignupPulse] = useState(0);
+  const loadSignups = useCallback(async () => {
+    const { data, error } = await rpc("admin_pending_clients", {});
+    if (error === "AUTH") { onAuthFail(); return; }
+    if (error) return;
+    setSignups(data || []);
+  }, [onAuthFail]);
+  useEffect(() => {
+    if (!authed || checking) return;
+    loadSignups();
+    const t = setInterval(loadSignups, 60000);
+    return () => clearInterval(t);
+  }, [authed, checking, loadSignups]);
+  const signupsChanged = useCallback(() => {
+    loadSignups();
+    setSignupPulse((n) => n + 1);
+  }, [loadSignups]);
 
   /* Ποια συζήτηση είναι ανοιχτή τώρα — για να μην ειδοποιεί για
      μήνυμα που ο διαχειριστής βλέπει ήδη μπροστά του. */
@@ -1303,6 +1404,9 @@ function App() {
 
   const content = (
     <React.Fragment>
+      {(tab === "schedule" || tab === "people") && (
+        <PendingSignups {...props} rows={signups} onChanged={signupsChanged} />
+      )}
       {tab === "schedule" && <PendingAttendance {...props} refreshKey={watch.pulse} />}
       {tab === "schedule" && (
         <Schedule {...props} refreshKey={watch.pulse} newItems={watch.items}
@@ -1310,7 +1414,7 @@ function App() {
           seenDays={seenDays} onDaySeen={markDaySeen} />
       )}
       {tab === "hours" && <Hours {...props} />}
-      {tab === "people" && <People {...props} />}
+      {tab === "people" && <People {...props} refreshKey={signupPulse} />}
       {tab === "chat" && (
         <Chat {...props} isDesktop={isDesktop} pulse={chat.pulse}
           onChanged={chat.refresh} openClientRef={openChatRef}
@@ -1366,7 +1470,8 @@ function App() {
                 {tab === "chat" && <option value="chat" hidden>Μηνύματα</option>}
               </select>
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px]">▼</span>
-              {somethingNew && tab !== "schedule" && (
+              {((somethingNew && tab !== "schedule")
+                || (signups.length > 0 && tab !== "people" && tab !== "schedule")) && (
                 <Dot className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2" />
               )}
             </div>
@@ -1405,6 +1510,7 @@ function App() {
                   tab === k ? "border-black bg-black text-white" : "border-transparent text-neutral-600 hover:border-neutral-300"}`}>
                 {label}
                 {k === "schedule" && tab !== "schedule" && somethingNew && <Dot />}
+                {k === "people" && tab !== "people" && signups.length > 0 && <Dot />}
               </button>
             ))}
           </nav>
@@ -2985,7 +3091,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
 /* Κενή φόρμα νέου πελάτη. Ίδια πεδία με την εγγραφή στην εφαρμογή. */
 const NEW_CLIENT = { first_name: "", last_name: "", phone: "", email: "", pin: "", marketing: false };
 
-function People({ flash, onAuthFail }) {
+function People({ flash, onAuthFail, refreshKey }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3020,7 +3126,7 @@ function People({ flash, onAuthFail }) {
     if (error === "AUTH") { onAuthFail(); return; }
     if (error) { flash("Δεν φόρτωσαν οι πελάτες"); return; }
     setRows(data || []);
-  }, [q, flash, onAuthFail]);
+  }, [q, flash, onAuthFail, refreshKey]);
 
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 

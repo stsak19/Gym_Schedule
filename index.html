@@ -2660,7 +2660,10 @@ function App() {
     /* Αν προλάβει να απαντήσει ο έλεγχος στο παρασκήνιο αφού έσβησε
        ο ίδιος τον λογαριασμό του, να μη γυρίσει το μήνυμα σε «σε
        διέγραψε το γυμναστήριο». */
-    setGone((prev) => (prev === "self" || reason === "self" ? "self" : "admin"));
+    setGone((prev) => {
+      if (prev === "self" || reason === "self") return "self";
+      return reason === "pending" ? "pending" : "admin";
+    });
   }, []);
 
   if (!ready) {
@@ -2688,6 +2691,10 @@ function App() {
    ============================================================ */
 function AccountGone({ onDone, reason }) {
   const self = reason === "self";
+  /* Ο λογαριασμός υπάρχει, αλλά η εγγραφή δεν έχει εγκριθεί. */
+  if (reason === "pending") {
+    return <SignupPending kind="wait" onDone={onDone} />;
+  }
   return (
     <div className="mx-auto flex h-full max-w-md flex-col justify-center px-6"
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}>
@@ -2930,6 +2937,9 @@ function SignIn({ onLogin, flash }) {
   const [busy, setBusy] = useState(false);
   const [forgot, setForgot] = useState(false);
   const [policy, setPolicy] = useState(false);
+  /* «sent» = μόλις στάλθηκε η εγγραφή, «wait» = προσπάθησε να μπει
+     αλλά η εγγραφή του δεν έχει εγκριθεί ακόμα. */
+  const [pending, setPending] = useState(null);
 
   const resetFields = () => {
     setFirstName(""); setLastName(""); setPhone("");
@@ -2945,6 +2955,8 @@ function SignIn({ onLogin, flash }) {
     setBusy(true);
     const { data, error } = await sb.rpc("sign_in_client", { p_phone: cleanPhone, p_pin: pin });
     setBusy(false);
+    /* Σωστά στοιχεία, αλλά η εγγραφή περιμένει ακόμα το γυμναστήριο. */
+    if (!error && data?.pending) { setPending("wait"); return; }
     if (error || !data?.ok) { setErr(data?.error || "Κάτι πήγε στραβά, δοκίμασε ξανά"); return; }
     onLogin({ clientId: data.client_id, firstName: data.first_name, lastName: data.last_name }, false, remember);
   };
@@ -2967,12 +2979,30 @@ function SignIn({ onLogin, flash }) {
       p_email: cleanEmail || null, p_marketing: marketing,
     });
     setBusy(false);
-    if (error || !data?.ok) { setErr(data?.error || "Κάτι πήγε στραβά, δοκίμασε ξανά"); return; }
-    /* Καινούρια συσκευή, καινούριος λογαριασμός: ξαναρωτάμε για
-       ειδοποιήσεις ακόμα κι αν είχε ξαναρωτηθεί από άλλον πελάτη. */
+    if (error) { setErr("Κάτι πήγε στραβά, δοκίμασε ξανά"); return; }
+    /* Η εγγραφή δεν ανοίγει πια την εφαρμογή: πάει στη διαχείριση και
+       περιμένει έγκριση. Μπαίνει μόλις τον δεχτούν, με τα ίδια στοιχεία. */
+    if (data?.pending) {
+      /* Καινούρια συσκευή, καινούριος λογαριασμός: ξαναρωτάμε για
+         ειδοποιήσεις ακόμα κι αν είχε ξαναρωτηθεί από άλλον πελάτη. */
+      try { localStorage.removeItem(PUSH_ASKED_KEY); } catch (e) { /* ignore */ }
+      setPending("sent");
+      return;
+    }
+    if (!data?.ok) { setErr(data?.error || "Κάτι πήγε στραβά, δοκίμασε ξανά"); return; }
     try { localStorage.removeItem(PUSH_ASKED_KEY); } catch (e) { /* ignore */ }
     onLogin({ clientId: data.client_id, firstName: fn, lastName: ln }, true);
   };
+
+  if (pending) {
+    return (
+      <SignupPending kind={pending} onDone={() => {
+        setPending(null);
+        resetFields();
+        setMode(null);
+      }} />
+    );
+  }
 
   /* Η σελίδα δεν κυλάει ποτέ (βλ. CSS στην αρχή), οπότε η οθόνη
      σύνδεσης/εγγραφής έχει δικό της κυλιόμενο κουτί. Η φόρμα εγγραφής
@@ -3098,6 +3128,38 @@ function SignIn({ onLogin, flash }) {
 
       {policy && <PrivacyPolicy onClose={() => setPolicy(false)} />}
     </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Η εγγραφή περιμένει έγκριση
+
+   Δύο περιπτώσεις, ίδια οθόνη: μόλις έστειλε την εγγραφή του
+   («sent»), ή προσπάθησε να μπει πριν τον δεχτεί το γυμναστήριο
+   («wait»). Δεν υπάρχει τίποτα να κάνει εδώ — μπαίνει κανονικά με
+   τα ίδια στοιχεία μόλις εγκριθεί.
+   ============================================================ */
+function SignupPending({ kind, onDone }) {
+  const sent = kind === "sent";
+  return (
+    <div className="mx-auto flex h-full max-w-md flex-col justify-center px-6"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}>
+      <div className="f-display text-[13px] font-bold uppercase tracking-[0.18em] text-neutral-400">{GYM_NAME}</div>
+      <h1 className="f-display mt-5 text-[30px] font-extrabold uppercase leading-[0.95] tracking-tight">
+        {sent
+          ? <>Η εγγραφή σου<br />στάλθηκε</>
+          : <>Η εγγραφή σου<br />περιμένει έγκριση</>}
+      </h1>
+      <p className="f-text mt-4 text-[14px] leading-relaxed text-neutral-600">
+        {sent
+          ? "Το γυμναστήριο πρέπει πρώτα να τη δεχτεί. Μόλις γίνει αυτό, μπαίνεις κανονικά με το κινητό και τον κωδικό που έβαλες."
+          : "Τα στοιχεία σου είναι σωστά, αλλά το γυμναστήριο δεν έχει δεχτεί ακόμα την εγγραφή σου. Ξαναδοκίμασε αργότερα."}
+      </p>
+      <p className="f-text mt-3 text-[13px] leading-relaxed text-neutral-500">
+        Αν βιάζεσαι, πέρνα από τη γραμματεία ή τηλεφώνησε στο γυμναστήριο.
+      </p>
+      <Button size="lg" className="mt-8" onClick={onDone}>Εντάξει</Button>
     </div>
   );
 }
@@ -3910,6 +3972,9 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
        βγαίνει έξω αμέσως και δεν φορτώνουμε τίποτα άλλο. */
     const who = await sb.rpc("client_status", { p_client_id: session.clientId });
     if (!who.error && who.data && who.data.exists === false) { onAccountGone(); return; }
+    /* Εγγραφή που δεν έχει εγκριθεί (ή δεν εγκρίθηκε ποτέ) δεν μένει
+       μέσα στην εφαρμογή. */
+    if (!who.error && who.data && who.data.approved === false) { onAccountGone("pending"); return; }
 
     const [n, mine, unread, open] = await Promise.all([
       sb.rpc("my_notifications", { p_client_id: session.clientId }),
