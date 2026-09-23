@@ -3655,7 +3655,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
      νωρίς: το Πρόγραμμα μένει ανοιχτό, με μπάρα και χωρίς νέα κράτηση.
      Το πλήρες παράθυρο βγαίνει μόνο όταν δεν του έμεινε καμία ώρα. */
   const outOfCredits = !!credits && credits.remaining <= 0;
-  const hasAhead = upcoming.some((b) => b.status === "booked");
+  const hasAhead = upcoming.some((b) => bookingState(b) === "booked");
   /* Χωρίς ενεργή συνδρομή το Πρόγραμμα κλειδώνει πάντα — ακόμα κι αν
      έχει κλεισμένες ώρες από παλιό πακέτο. */
   const noPackage = !!credits && credits.active === false;
@@ -4245,6 +4245,17 @@ function OutOfCredits({ credits, hasUpcoming, chatOn, onGo }) {
   );
 }
 
+/* Τι έγινε με την κράτηση μετά το «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Το state το
+   στέλνει η my_bookings· αν λείπει (παλιά απάντηση), κρίνουμε από το status. */
+const bookingState = (b) => (b && b.state) || (b && b.status === "checked_in" ? "checked_in" : "booked");
+const STATE_LABEL = {
+  booked: "Έχεις κράτηση",
+  checked_in: "Έκανες check-in",
+  absent_pending: "Σε αναμονή",
+  refunded: "Επιστράφηκε",
+  forfeit: "Δεν ήρθες",
+};
+
 function BookTab({ session, flash, credits, hasAhead, onMine }) {
   const [date, setDate] = useState(iso(new Date()));
   const [slots, setSlots] = useState(null);
@@ -4387,7 +4398,10 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
             /* Κράτηση με check-in δεν ακυρώνεται πια (το απορρίπτει και η
                cancel_booking), οπότε δεν δείχνουμε κουμπί ακύρωσης. */
             const myB = mine[s.slot_time];
-            const attended = !!myB && myB.status === "checked_in";
+            const st = myB ? bookingState(myB) : null;
+            /* Ακύρωση μόνο για κανονική κράτηση. Μετά το check-in ή την
+               απάντηση ΟΧΙ δεν ακυρώνεται (το απορρίπτει και η βάση). */
+            const attended = !!myB && st !== "booked";
             return (
               <div key={s.slot_time} className="px-5 py-4">
                 <div className="flex items-center justify-between gap-4">
@@ -4395,8 +4409,10 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
                     <FlipNum value={s.slot_time} className="f-mono block text-[28px] leading-none tracking-tight" />
                     <div className="mt-2">
                       {myB ? (
-                        <span className="f-display border border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
-                          {attended ? "Έκανες check-in" : "Έχεις κράτηση"}
+                        <span className={`f-display border px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                          st === "absent_pending" || st === "forfeit" || st === "refunded"
+                            ? "border-neutral-400 text-neutral-500" : "border-black"}`}>
+                          {STATE_LABEL[st] || "Έχεις κράτηση"}
                         </span>
                       ) : full ? (
                         <span className="f-text text-[13px] text-neutral-500">Δεν υπάρχουν διαθέσιμες θέσεις</span>
@@ -4404,7 +4420,13 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
                     </div>
                   </div>
                   <div className="shrink-0">
-                    {attended ? null : myB ? (
+                    {attended ? (
+                      st === "absent_pending" ? (
+                        <span className="f-text block max-w-[140px] text-right text-[12px] leading-snug text-neutral-500">
+                          Το γυμναστήριο θα αποφασίσει
+                        </span>
+                      ) : null
+                    ) : myB ? (
                       <Button variant="danger" size="sm" disabled={isBusy}
                         onClick={() => cancel(myB.id, s.slot_time)}>
                         Ακύρωση
@@ -4457,7 +4479,9 @@ function MyBookings({ session, flash, onMine }) {
     load();
   };
 
-  const label = { checked_in: "Παρών", booked: "Κρατημένο" };
+  const label = { checked_in: "Παρών", booked: "Κρατημένο",
+    absent_pending: "Είπες ότι δεν ήρθες · σε αναμονή", refunded: "Δεν ήρθες · η κράτηση επιστράφηκε",
+    forfeit: "Δεν ήρθες" };
   const bookings = data?.bookings || [];
   const waits = data?.waitlist || [];
 
@@ -4475,9 +4499,9 @@ function MyBookings({ session, flash, onMine }) {
             <div key={b.id} className="flex items-center justify-between gap-4 py-4">
               <div>
                 <span className="f-mono block text-[20px] leading-none tracking-tight">{b.time}</span>
-                <div className="f-text mt-1 text-[13px] text-neutral-500">{fmtDay(b.date)} · {label[b.status] || b.status}</div>
+                <div className="f-text mt-1 text-[13px] text-neutral-500">{fmtDay(b.date)} · {label[bookingState(b)] || b.status}</div>
               </div>
-              {b.status === "booked" && (
+              {bookingState(b) === "booked" && (
                 <Button variant="danger" size="sm" disabled={busyId === b.id} onClick={() => cancel(b.id)}>Ακύρωση</Button>
               )}
             </div>

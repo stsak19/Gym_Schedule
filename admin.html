@@ -1077,6 +1077,13 @@ const TABS = [
   ["settings", "Ρυθμίσεις"],
 ];
 
+/* Κρατήσεις που δεν αλλάζουν πια από το πρόγραμμα. */
+const DECIDED_LABEL = {
+  absent_pending: "Δήλωσε ότι δεν ήρθε · απόφαση πιο πάνω",
+  refunded: "Δεν ήρθε · η κράτηση επιστράφηκε",
+  forfeit: "Δεν ήρθε · έχασε την κράτηση",
+};
+
 /* ---------- Δήλωσε ότι δεν ήρθε ----------
    Ο πελάτης πάτησε «ΟΧΙ» στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Ο διαχειριστής
    αποφασίζει: «Επιστροφή» δίνει πίσω την κράτηση στο πακέτο,
@@ -2057,6 +2064,12 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                 <div className="f-text text-[12px] text-neutral-500">Check-in από τις {opensLabel}</div>
                               )}
                             </div>
+                            {DECIDED_LABEL[p.state] ? (
+                              /* Κράτηση που κρίθηκε μετά το «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;»: χωρίς κουμπιά. */
+                              <span className="f-display shrink-0 self-start border border-neutral-400 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-neutral-500 sm:self-center">
+                                {DECIDED_LABEL[p.state]}
+                              </span>
+                            ) : (
                             <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
                               <Button size="sm" variant={p.status === "checked_in" ? "outline" : "primary"}
                                 disabled={p.status !== "checked_in" && tooEarly}
@@ -2065,6 +2078,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                               </Button>
                               <Button size="sm" variant="danger" onClick={() => setStatus(p.booking_id, "cancelled")}>Ακύρωση</Button>
                             </div>
+                            )}
                           </div>
                         ))}
                       </div>
