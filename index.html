@@ -3301,9 +3301,14 @@ function Collapsible({ title, children }) {
   );
 }
 
-/* Ιστορικό κρατήσεων: μόνο όσες πέρασαν από check-in της διαχείρισης.
-   Ακυρώσεις, απουσίες και κρατήσεις που δεν έχουν γίνει ακόμα δεν
-   φαίνονται εδώ. */
+/* Ιστορικό κρατήσεων: οι προπονήσεις με check-in και οι απουσίες
+   (όσες απάντησε ΟΧΙ στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;»). Ακυρώσεις και κρατήσεις
+   που δεν έχουν γίνει ακόμα δεν φαίνονται εδώ. */
+const HISTORY_ABSENT = {
+  absent_pending: "Δεν ήρθες · σε αναμονή",
+  refunded: "Δεν ήρθες · επιστράφηκε",
+  forfeit: "Δεν ήρθες",
+};
 function HistoryPanel({ session }) {
   return (
     <Collapsible title="Ιστορικό κρατήσεων">
@@ -3333,16 +3338,28 @@ function HistoryList({ session }) {
   if (rows.length === 0) return <div className="f-text py-4 text-[13px] text-neutral-500">Δεν υπάρχει ακόμα ιστορικό.</div>;
 
   const shown = all ? rows : rows.slice(0, 10);
+  const done = rows.filter((b) => !HISTORY_ABSENT[b.state]).length;
+  const missed = rows.length - done;
   return (
     <>
       <div className="f-text text-[12px] text-neutral-500">
-        {rows.length === 1 ? "1 προπόνηση" : `${rows.length} προπονήσεις`}
+        {done === 1 ? "1 προπόνηση" : `${done} προπονήσεις`}
+        {missed > 0 && ` · ${missed === 1 ? "1 απουσία" : `${missed} απουσίες`}`}
       </div>
       <div className="mt-2 divide-y divide-neutral-300 border-y border-black">
         {shown.map((b) => (
           <div key={b.id} className="flex items-center justify-between gap-4 py-3">
-            <span className="f-text text-[14px]">{fmtDayLong(b.date)} {parseISO(b.date).getFullYear()}</span>
-            <span className="f-mono text-[16px] tracking-tight">{String(b.time).slice(0, 5)}</span>
+            <span className="min-w-0">
+              <span className={`f-text block text-[14px] ${HISTORY_ABSENT[b.state] ? "text-neutral-400" : ""}`}>
+                {fmtDayLong(b.date)} {parseISO(b.date).getFullYear()}
+              </span>
+              {HISTORY_ABSENT[b.state] && (
+                <span className="f-text block text-[12px] text-[#C81E1E]">{HISTORY_ABSENT[b.state]}</span>
+              )}
+            </span>
+            <span className={`f-mono text-[16px] tracking-tight ${HISTORY_ABSENT[b.state] ? "text-neutral-400 line-through" : ""}`}>
+              {String(b.time).slice(0, 5)}
+            </span>
           </div>
         ))}
       </div>

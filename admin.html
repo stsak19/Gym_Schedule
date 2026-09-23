@@ -1888,7 +1888,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
   const total = allPeople.length;
   const checkins = allPeople.filter((p) => p.status === "checked_in").length;
   const totalCap = slots.reduce((sum, s) => sum + s.capacity, 0);
-  const fill = totalCap ? Math.round((total / totalCap) * 100) : 0;
+  /* Η πληρότητα μετράει μόνο όσους πιάνουν θέση — όχι όσους δεν ήρθαν. */
+  const seated = allPeople.filter((p) => !DECIDED_LABEL[p.state]).length;
+  const fill = totalCap ? Math.round((seated / totalCap) * 100) : 0;
   const cancelledPeople = data?.cancelled_people || [];
 
   /* Στη λίστα μπαίνει κάθε ανοιχτή ώρα — ακόμα κι άδεια — ώστε να
@@ -1928,7 +1930,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
         title: "Πληρότητα ανά ώρα",
         hours: slots.map((s) => ({
           time: s.slot_time,
-          taken: (s.people || []).length,
+          taken: (s.people || []).filter((p) => !DECIDED_LABEL[p.state]).length,
           capacity: s.capacity,
         })),
       };
@@ -2019,6 +2021,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
           {bookedSlots.map((s) => {
             const people = s.people || [];
             const present = people.filter((p) => p.status === "checked_in").length;
+            /* Όποιος δεν ήρθε (είπε ΟΧΙ ή κρίθηκε) φαίνεται στη λίστα αλλά
+               δεν πιάνει θέση. */
+            const taken = people.filter((p) => !DECIDED_LABEL[p.state]).length;
             const expanded = open === s.slot_time;
             const opensAt = s.checkin_opens_at ? new Date(s.checkin_opens_at) : null;
             const tooEarly = !!opensAt && nowMs < opensAt.getTime();
@@ -2033,12 +2038,12 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                       {fresh.byKey.has(date + " " + s.slot_time) && <Dot />}
                     </span>
                     <div className="flex items-center gap-4">
-                      <span className="f-mono text-[13px] text-neutral-600">{people.length}/{s.capacity}</span>
+                      <span className="f-mono text-[13px] text-neutral-600">{taken}/{s.capacity}</span>
                       <span className="f-text text-[13px] text-neutral-500">{present} παρόντες</span>
                       <span className="f-display text-neutral-400">{expanded ? "−" : "+"}</span>
                     </div>
                   </div>
-                  <div className="mt-3"><SeatMeter taken={people.length} cap={s.capacity} /></div>
+                  <div className="mt-3"><SeatMeter taken={taken} cap={s.capacity} /></div>
                 </button>
 
                 {expanded && (
@@ -3371,7 +3376,8 @@ function People({ flash, onAuthFail, refreshKey }) {
     load();
   };
 
-  const label = { checked_in: "Παρών", cancelled: "Ακυρώθηκε", booked: "Κρατημένο", no_show: "Δεν ήρθε" };
+  const label = { checked_in: "Παρών", cancelled: "Ακυρώθηκε", booked: "Κρατημένο", no_show: "Δεν ήρθε",
+    no_show_refund: "Δεν ήρθε · επιστράφηκε", absent_pending: "Δήλωσε ότι δεν ήρθε" };
 
   if (sel) {
     return (
