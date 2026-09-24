@@ -2736,7 +2736,8 @@ function CardPanel({ client, flash, onAuthFail, onChanged }) {
    Ο διαχειριστής ορίζει πόσες κρατήσεις έχει ο πελάτης. Η βάση
    ξοδεύει μία σε κάθε κράτηση και την επιστρέφει σε κάθε ακύρωση
    (trigger bookings_credit), και κρατάει κάθε κίνηση στον credit_log.
-   Στην ανανέωση ο credit_log του πελάτη σβήνεται και ξεκινάει καθαρός. */
+   Στην ανανέωση δεν σβήνεται τίποτα: ξεκινάει νέο πακέτο και τα παλιά
+   μένουν στη βάση. Η πίτα και το PDF δείχνουν μόνο το τρέχον πακέτο. */
 const CREDIT_KIND = {
   renew: "Ανανέωση πακέτου",
   use: "Κράτηση",
@@ -3180,8 +3181,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
         <div className="mt-5 border-2 border-black p-4">
           <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
             Ο/Η <strong>{client.name}</strong> μένει χωρίς πακέτο και δεν θα μπορεί να κλείσει
-            καμία ώρα μέχρι να ανανεώσει. Η πίτα και το ιστορικό του πακέτου σβήνονται — αν
-            τα θέλεις, κάνε πρώτα εξαγωγή.
+            καμία ώρα μέχρι να ανανεώσει. Οι κρατήσεις και το ιστορικό του δεν σβήνονται.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button disabled={busy} onClick={save}>{busy ? "…" : "Ναι, κατάργησέ το"}</Button>
@@ -3197,7 +3197,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
             {mode === "adjust"
               ? `Αλλάζει μόνο το σύνολο του τρέχοντος πακέτου. Οι ${used} που χρησιμοποίησε μένουν.`
               : has
-                ? "Ξεκινάει καινούριο πακέτο από το μηδέν. Η τωρινή πίτα και το ιστορικό της σβήνονται οριστικά — αν τα θέλεις, κάνε πρώτα εξαγωγή."
+                ? "Ξεκινάει καινούριο πακέτο από το μηδέν. Οι κρατήσεις και το ιστορικό του πελάτη μένουν όπως είναι."
                 : "Πόσες κρατήσεις αγόρασε ο πελάτης;"}
           </p>
           {mode === "renew" && (
@@ -3921,8 +3921,8 @@ function CleanupPanel({ flash, onAuthFail }) {
     setConfirm(false);
     if (error === "AUTH") { onAuthFail(); return; }
     if (error || !data?.ok) { flash(data?.error || "Δεν έγινε το καθάρισμα"); return; }
-    const n = (data.bookings || 0) + (data.cancel_log || 0) + (data.notifications || 0) + (data.waitlist || 0);
-    flash(n === 0 ? "Δεν υπήρχε τίποτα παλιό να σβηστεί" : "Σβήστηκαν " + n + " εγγραφές");
+    const n = (data.notifications || 0) + (data.waitlist || 0) + (data.junk || 0);
+    flash(n === 0 ? "Δεν υπήρχε τίποτα άχρηστο να σβηστεί" : "Σβήστηκαν " + n + " άχρηστες εγγραφές");
     load();
   };
 
@@ -3958,8 +3958,8 @@ function CleanupPanel({ flash, onAuthFail }) {
       ) : (
         <>
           <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
-            Κάθε κράτηση και κάθε ακύρωση μένει στη βάση. Χρειάζονται για τα στατιστικά και για
-            το ιστορικό του κάθε πελάτη, γι' αυτό δεν σβήνονται μόνες τους.
+            Οι κρατήσεις, οι ακυρώσεις και τα πακέτα δεν σβήνονται ποτέ. Κάθε βράδυ σβήνονται μόνο
+            τα άχρηστα: παλιές ειδοποιήσεις, λίστες αναμονής που πέρασαν και logs του συστήματος.
           </p>
 
           <div className="mt-4 divide-y divide-neutral-200 border-y-2 border-black">
@@ -3987,45 +3987,9 @@ function CleanupPanel({ flash, onAuthFail }) {
             </div>
           </div>
 
-          <div className="f-display mt-5 text-[12px] font-bold uppercase tracking-wide text-neutral-500">
-            Καθάρισμα
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {CHOICES.map(([m, label]) => (
-              <button key={m} onClick={() => { setMonths(m); setConfirm(false); }}
-                className={`f-text flex w-full items-center gap-3 border-2 px-3 py-2.5 text-left text-[14px] ${
-                  months === m ? "border-black bg-black text-white" : "border-neutral-300 hover:border-black"}`}>
-                <span className={`h-3 w-3 shrink-0 rounded-full border-2 ${
-                  months === m ? "border-white bg-white" : "border-neutral-400"}`} />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {!confirm ? (
-            <Button variant="outline" className="mt-4" onClick={() => setConfirm(true)}>
-              Καθάρισμα ιστορικού
-            </Button>
-          ) : (
-            <div className="mt-4 border-2 border-red-600 bg-red-50 p-3">
-              <div className="f-display text-[12px] font-bold uppercase tracking-wide text-red-700">
-                Σίγουρα;
-              </div>
-              <div className="f-text mt-1 max-w-[52ch] text-[13px] leading-relaxed text-red-800">
-                {chosen}. Ό,τι είναι παλιότερο σβήνεται οριστικά — κρατήσεις, ακυρώσεις και
-                ειδοποιήσεις. Τα στατιστικά και τα ιστορικά των πελατών θα δείχνουν λιγότερα.
-                Οι σημερινές και οι μελλοντικές κρατήσεις δεν πειράζονται ποτέ.
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" disabled={busy} onClick={purge}>
-                  {busy ? "…" : "Ναι, σβήσ' τα"}
-                </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirm(false)}>
-                  Άκυρο
-                </Button>
-              </div>
-            </div>
-          )}
+          <Button variant="outline" className="mt-4" disabled={busy} onClick={purge}>
+            {busy ? "Καθάρισμα…" : "Καθάρισμα άχρηστων τώρα"}
+          </Button>
         </>
       )}
     </div>
