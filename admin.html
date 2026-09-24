@@ -2,7 +2,15 @@
 <html lang="el">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="format-detection" content="telephone=no" />
+<meta name="theme-color" content="#FFFFFF" />
+<!-- iPhone: «Προσθήκη στην οθόνη Αφετηρίας» ανοίγει το admin σαν εφαρμογή. -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Admin" />
+<link rel="apple-touch-icon" href="icon-180.png" />
 <title>Διαχείριση</title>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
@@ -27,6 +35,21 @@ body { -webkit-tap-highlight-color: transparent; }
    παίρνουν 16px και το zoom δεν γίνεται. */
 @media (pointer: coarse) {
   input, textarea, select { font-size: 16px !important; }
+}
+
+/* ── iPhone (π.χ. iPhone 13, 390×844) ─────────────────────
+   Το 100vh στο Safari μετράει και τη μπάρα που κρύβεται, οπότε η
+   σελίδα έβγαινε πιο ψηλή από την οθόνη. Το 100dvh είναι το ορατό ύψος.
+   Τα env(safe-area-inset-*) κρατάνε το περιεχόμενο μακριά από την
+   εγκοπή και τη μπάρα αφετηρίας (και στο οριζόντιο). Το overflow-x:
+   clip κόβει ό,τι ξεφεύγει δεξιά χωρίς να χαλάει την καρφωμένη κεφαλίδα. */
+@supports (height: 100dvh) {
+  .min-h-screen { min-height: 100dvh !important; }
+}
+.gym-root {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  overflow-x: clip;
 }
 .gym-root { font-family: 'Big Shoulders Text', system-ui, sans-serif; }
 .f-display { font-family: 'Big Shoulders Display', system-ui, sans-serif; letter-spacing: 0.005em; }
@@ -897,8 +920,9 @@ function NotificationsPanel({ items, error, isDesktop, onOpenItem, onDismiss, on
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div className="absolute inset-0 bg-black/20" />
       <div onClick={(e) => e.stopPropagation()}
-        className={`absolute max-h-[70vh] overflow-y-auto border-2 border-black bg-white ${
-          isDesktop ? "right-[254px] top-6 w-[360px]" : "inset-x-4 top-4"}`}>
+        className={`absolute overflow-y-auto border-2 border-black bg-white ${
+          isDesktop ? "right-[254px] top-6 w-[360px] max-h-[70vh]"
+            : "inset-x-4 top-[calc(1rem+env(safe-area-inset-top))] max-h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]"}`}>
         <div className="sticky top-0 flex items-center justify-between border-b-2 border-black bg-black px-4 py-3 text-white">
           <span className="f-display text-[13px] font-bold uppercase tracking-wide">Ειδοποιήσεις</span>
           <button onClick={onClose} className="f-display text-[20px] leading-none opacity-70">×</button>
@@ -1091,11 +1115,19 @@ const DECIDED_LABEL = {
 
 /* ---------- Δήλωσε ότι δεν ήρθε ----------
    Ο πελάτης πάτησε «ΟΧΙ» στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Ο διαχειριστής
-   αποφασίζει: «Επιστροφή» δίνει πίσω την κράτηση στο πακέτο,
-   «Τη χάνει» την αφήνει χρεωμένη (admin_resolve_absence).
+   κρίνει: «Δεν ήρθε · επιστροφή» δίνει πίσω την κράτηση στο πακέτο,
+   «Ήρθε · χρεώνεται» γράφει check-in και την αφήνει χρεωμένη
+   (admin_resolve_absence). Μένει εδώ μέχρι να απαντήσει, όσες μέρες κι αν περάσουν.
    Φαίνεται σε κάθε καρτέλα και ελέγχει κάθε 20''· κάθε νέα δήλωση
    χτυπάει ήχο και βγάζει ειδοποίηση. */
 const ABSENCE_SEEN_KEY = "kinesis_admin_absence_seen";
+/* Πόσο παλιά είναι η δήλωση: «Σήμερα», «Χθες», «Πριν 3 μέρες». */
+const daysAgoLabel = (dstr) => {
+  const n = Math.round((parseISO(iso(new Date())) - parseISO(dstr)) / 86400000);
+  if (n <= 0) return "Σήμερα";
+  if (n === 1) return "Χθες";
+  return `Πριν ${n} μέρες`;
+};
 function AbsenceReports({ flash, onAuthFail }) {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(null);
@@ -1146,8 +1178,8 @@ function AbsenceReports({ flash, onAuthFail }) {
     if (error || !data?.ok) { flash(data?.error || "Δεν αποθηκεύτηκε"); load(); return; }
     setRows((prev) => prev.filter((x) => x.booking_id !== r.booking_id));
     flash(refund
-      ? (data.refunded ? `${r.name}: η κράτηση επέστρεψε στο πακέτο` : `${r.name}: σημειώθηκε (η κράτηση ήταν εκτός πακέτου)`)
-      : `${r.name}: έχασε την κράτηση`);
+      ? (data.refunded ? `${r.name}: δεν ήρθε · η κράτηση επέστρεψε στο πακέτο` : `${r.name}: δεν ήρθε (η κράτηση ήταν εκτός πακέτου)`)
+      : `${r.name}: ήρθε · η κράτηση χρεώθηκε`);
   };
 
   if (rows.length === 0) return null;
@@ -1160,23 +1192,32 @@ function AbsenceReports({ flash, onAuthFail }) {
         </div>
       </div>
       <p className="f-text px-4 pt-3 text-[13px] leading-relaxed text-neutral-500">
-        Απάντησαν «ΟΧΙ» στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Διάλεξε αν παίρνουν πίσω την κράτηση ή τη χάνουν.
+        Πάτησαν «ΟΧΙ» στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Εσύ κρίνεις αν όντως δεν ήρθαν.
+        Μέχρι να απαντήσεις η κράτηση μένει χρεωμένη, και η ειδοποίηση μένει εδώ όσες μέρες κι αν περάσουν.
       </p>
-      <div className="max-h-[360px] divide-y divide-neutral-200 overflow-y-auto px-4 pb-2">
-        {rows.map((r) => (
-          <div key={r.booking_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <div className="min-w-0">
-              <div className="f-text truncate text-[15px] font-semibold">{r.name} δήλωσε πως δεν ήρθε</div>
-              <div className="f-mono text-[13px] text-neutral-500">
-                {fmtDay(r.date)} · {r.time}{!r.refundable && " · εκτός πακέτου"}
+      <div className="max-h-[420px] divide-y divide-neutral-200 overflow-y-auto px-4 pb-2">
+        {[...rows].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map((r) => {
+          const ago = daysAgoLabel(r.date);
+          const old = ago !== "Σήμερα";
+          return (
+            <div key={r.booking_id} className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="f-text truncate text-[15px] font-semibold">{r.name}</span>
+                  <span className={`f-display shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                    old ? "bg-red-600 text-white" : "border border-neutral-400 text-neutral-500"}`}>{ago}</span>
+                </div>
+                <div className="f-mono text-[13px] text-neutral-500">
+                  {fmtDay(r.date)} · {r.time}{!r.refundable && " · εκτός πακέτου"}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button size="sm" className="w-full sm:w-auto" disabled={busy === r.booking_id} onClick={() => decide(r, false)}>Ήρθε · χρεώνεται</Button>
+                <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled={busy === r.booking_id} onClick={() => decide(r, true)}>Δεν ήρθε · επιστροφή</Button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" disabled={busy === r.booking_id} onClick={() => decide(r, true)}>Επιστροφή κράτησης</Button>
-              <Button size="sm" variant="outline" disabled={busy === r.booking_id} onClick={() => decide(r, false)}>Τη χάνει</Button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1242,7 +1283,7 @@ function PendingAttendance({ flash, onAuthFail, refreshKey }) {
                     {fmtDay(r.date)} · {r.time}{!r.refundable && " · εκτός πακέτου"}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button size="sm" disabled={busy === r.booking_id} onClick={() => answer(r, true)}>Ήρθε</Button>
                   <Button size="sm" variant="outline" disabled={busy === r.booking_id} onClick={() => answer(r, false)}>Δεν ήρθε</Button>
                 </div>
@@ -1307,7 +1348,7 @@ function PendingSignups({ rows, onChanged, flash, onAuthFail }) {
                 <div className="f-mono text-[13px] text-neutral-500">{r.phone}</div>
                 {r.email && <div className="f-mono truncate text-[12px] text-neutral-400">{r.email}</div>}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy === r.id} onClick={() => approve(r)}>Έγκριση</Button>
                 <Button size="sm" variant="outline" disabled={busy === r.id}
                   onClick={() => setConfirm(confirm === r.id ? null : r.id)}>Διαγραφή</Button>
@@ -1543,7 +1584,8 @@ function App() {
             όσο κυλάει το περιεχόμενο από κάτω. Δύο γραμμές: πάνω το
             όνομα με ήχο, καμπάνα και μηνύματα, από κάτω το μενού με την
             έξοδο. Σε μία γραμμή δεν χωρούσαν και ο τίτλος κοβόταν. */}
-        <div className="sticky top-0 z-40 border-b-2 border-black bg-white">
+        <div className="sticky top-0 z-40 border-b-2 border-black bg-white"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}>
           <header className="flex items-center justify-between gap-3 px-4 pb-2.5 pt-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <Logo size={34} />
@@ -1580,7 +1622,7 @@ function App() {
           </div>
         </div>
 
-        <main className="pb-16">{content}</main>
+        <main style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}>{content}</main>
         {bellPanel}
         <Toast msg={toast} />
       </div>
@@ -1745,7 +1787,7 @@ function AddPerson({ date, time, past, onDone, flash, onAuthFail }) {
       {ask ? (
         <div className="mt-3 border-2 border-black p-3">
           <div className="f-text text-[13px] leading-snug">{ask.reason}</div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" disabled={busy === ask.client.id}
               onClick={() => { const c = ask.client; setAsk(null); add(c, true); }}>
               Πρόσθεσέ τον έτσι κι αλλιώς
@@ -5760,7 +5802,7 @@ function ChatThread({ client, flash, onAuthFail, onBack, onChanged, onDeleted, i
       style={isDesktop
         ? { height: "68vh", minHeight: 360 }
         /* Στο κινητό γεμίζει την οθόνη κάτω από την κεφαλίδα. */
-        : { height: `calc(100dvh / ${readScale()} - 150px)`, minHeight: 320 }}>
+        : { height: `calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) / ${readScale()} - 150px)`, minHeight: 320 }}>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b-2 border-black px-4 py-3">
         <div className="min-w-0">
           {!isDesktop && (
@@ -5920,7 +5962,7 @@ function Chat({ flash, onAuthFail, isDesktop, pulse, onChanged, openClientRef, c
             onClear={() => setPick({ id: null, name: "", phone: "" })}
             onAuthFail={onAuthFail}
           />
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" onClick={startWith}>Άνοιξε τη συζήτηση</Button>
             <Button variant="ghost" size="sm" onClick={() => { setPicking(false); setPick({ id: null, name: "", phone: "" }); }}>Άκυρο</Button>
           </div>
