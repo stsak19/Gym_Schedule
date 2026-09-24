@@ -1379,6 +1379,13 @@ function App() {
   const [authed, setAuthed] = useState(hasSession);
   const [checking, setChecking] = useState(hasSession);
   const [tab, setTab] = useState("schedule");
+  /* Πάτημα σε όνομα στο Πρόγραμμα → καρτέλα του πελάτη στους Πελάτες. */
+  const [openClientId, setOpenClientId] = useState(null);
+  const goToClient = useCallback((id) => {
+    if (!id) return;
+    setOpenClientId(id);
+    setTab("people");
+  }, []);
   const [toast, setToast] = useState("");
   const [scale, setScale] = useState(readScale);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth / readScale() >= 900);
@@ -1556,12 +1563,15 @@ function App() {
       )}
       {tab === "schedule" && <PendingAttendance {...props} refreshKey={watch.pulse} />}
       {tab === "schedule" && (
-        <Schedule {...props} refreshKey={watch.pulse} newItems={watch.items}
+        <Schedule {...props} refreshKey={watch.pulse} newItems={watch.items} onOpenClient={goToClient}
           focus={focus} onSeen={watch.dismiss}
           seenDays={seenDays} onDaySeen={markDaySeen} />
       )}
       {tab === "hours" && <Hours {...props} />}
-      {tab === "people" && <People {...props} refreshKey={signupPulse} />}
+      {tab === "people" && (
+        <People {...props} refreshKey={signupPulse}
+          openId={openClientId} onOpened={() => setOpenClientId(null)} />
+      )}
       {tab === "chat" && (
         <Chat {...props} isDesktop={isDesktop} pulse={chat.pulse}
           onChanged={chat.refresh} openClientRef={openChatRef}
@@ -1828,7 +1838,18 @@ function AddPerson({ date, time, past, onDone, flash, onAuthFail }) {
 }
 
 /* ---------- Schedule ---------- */
-function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seenDays, onDaySeen }) {
+/* Όνομα πελάτη που ανοίγει την καρτέλα του στους Πελάτες. */
+function ClientNameLink({ id, name, onOpen }) {
+  if (!id || !onOpen) return <span className="f-text truncate text-[15px]">{name}</span>;
+  return (
+    <button type="button" onClick={() => onOpen(id)} title="Άνοιγμα καρτέλας πελάτη"
+      className="f-text block min-w-0 truncate text-left text-[15px] underline decoration-neutral-300 underline-offset-4 hover:decoration-black">
+      {name}
+    </button>
+  );
+}
+
+function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seenDays, onDaySeen, onOpenClient }) {
   const todayISO = iso(new Date());
   const [date, setDate] = useState(todayISO);
   const [data, setData] = useState(null);
@@ -2039,7 +2060,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
               {d.rows.map((p, i) => (
                 <div key={i} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                   <div className="min-w-0">
-                    <div className="f-text text-[15px]">{p.name}</div>
+                    <ClientNameLink id={p.client_id} name={p.name} onOpen={onOpenClient} />
                     <div className="f-mono text-[12px] text-neutral-500">{p.phone}</div>
                   </div>
                   <span className="f-mono shrink-0 text-[13px] text-neutral-600">{p.time}</span>
@@ -2107,7 +2128,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                             <div className={`min-w-0 ${p.renewal ? "renewal-info" : ""}`}>
                               <div className="flex items-center gap-2">
                                 {fresh.ids.has(p.booking_id) && <Dot />}
-                                <span className="f-text truncate text-[15px]">{p.name}</span>
+                                <ClientNameLink id={p.client_id} name={p.name} onOpen={onOpenClient} />
                                 {p.walk_in && (
                                   <span className="f-display shrink-0 border border-neutral-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
                                     χωρίς κράτηση
@@ -2640,130 +2661,6 @@ function Station({ flash, onAuthFail }) {
         </>
       )}
       <div className="h-10" />
-    </div>
-  );
-}
-
-/* ---------- Η κάρτα ενός πελάτη ----------
-   Το κλειδί βγαίνει από τη βάση και γράφεται στην κάρτα με Web NFC —
-   πάλι μόνο από Android με Chrome. Το «νέο κλειδί» ακυρώνει αμέσως
-   την παλιά κάρτα, για χαμένες κάρτες. */
-function CardPanel({ client, flash, onAuthFail, onChanged }) {
-  const [token, setToken] = useState("");
-  const [has, setHas] = useState(!!client.has_card);
-  const [busy, setBusy] = useState("");
-  const [site, setSite] = useState("");
-  const [confirmRevoke, setConfirmRevoke] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data } = await rpc("admin_get_settings", {});
-      if (!alive) return;
-      setSite((((data && data.site_url) || "").trim()) || guessAppUrl());
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  const cardUrl = token && site ? site + (site.includes("?") ? "&" : "?") + "card=" + token : "";
-
-  const issue = async (rotate) => {
-    setBusy(rotate ? "new" : "issue");
-    const { data, error } = await rpc("admin_issue_card", { p_client_id: client.id, p_new: !!rotate });
-    setBusy("");
-    if (error === "AUTH") { onAuthFail(); return; }
-    if (error || !data || !data.ok) { flash((data && data.error) || "Δεν βγήκε κάρτα"); return; }
-    setToken(data.token);
-    setHas(true);
-    if (rotate) flash("Νέο κλειδί — η παλιά κάρτα δεν δουλεύει πια");
-    if (onChanged) onChanged();
-  };
-
-  const write = async () => {
-    if (!cardUrl) return;
-    setBusy("write");
-    try {
-      const w = new NDEFReader();
-      await w.write({ records: [{ recordType: "url", data: cardUrl }] });
-      flash("Η κάρτα γράφτηκε");
-    } catch (e) {
-      flash("Δεν γράφτηκε: " + (e.message || e));
-    }
-    setBusy("");
-  };
-
-  const revoke = async () => {
-    setBusy("revoke");
-    const { data, error } = await rpc("admin_revoke_card", { p_client_id: client.id });
-    setBusy("");
-    if (error === "AUTH") { onAuthFail(); return; }
-    if (error || !data || !data.ok) { flash("Δεν ακυρώθηκε"); return; }
-    setToken(""); setHas(false); setConfirmRevoke(false);
-    flash("Η κάρτα ακυρώθηκε");
-    if (onChanged) onChanged();
-  };
-
-  return (
-    <div className="mt-12 border-t-2 border-black pt-6">
-      <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">Κάρτα εισόδου</h3>
-
-      {!token ? (
-        <>
-          <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-            {has
-              ? "Ο πελάτης έχει κάρτα. Άνοιξέ τη για να τη γράψεις σε καινούριο αυτοκόλλητο ή για να βγάλεις νέο κλειδί."
-              : "Δώσε στον πελάτη κάρτα NFC. Ακουμπάει στη συσκευή της εισόδου και περνάει, με κράτηση ή χωρίς."}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="outline" disabled={!!busy} onClick={() => issue(false)}>
-              {busy === "issue" ? "…" : has ? "Άνοιγμα κάρτας" : "Έκδοση κάρτας"}
-            </Button>
-            {has && !confirmRevoke && (
-              <Button variant="ghost" onClick={() => setConfirmRevoke(true)}>Ακύρωση κάρτας</Button>
-            )}
-          </div>
-          {confirmRevoke && (
-            <div className="mt-3 border-2 border-black p-4">
-              <p className="f-text max-w-[56ch] text-[14px] leading-relaxed">
-                Η κάρτα του/της <strong>{client.name}</strong> παύει να δουλεύει αμέσως.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button disabled={!!busy} onClick={revoke}>{busy === "revoke" ? "…" : "Ναι, ακύρωσέ τη"}</Button>
-                <Button variant="ghost" onClick={() => setConfirmRevoke(false)}>Άκυρο</Button>
-              </div>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="mt-3 border-2 border-black p-4">
-          <div className="f-display text-[11px] font-bold uppercase tracking-wide text-neutral-500">Κλειδί κάρτας</div>
-          <div className="f-mono mt-1 break-all text-[15px]">{token}</div>
-          <div className="f-mono mt-3 break-all text-[12px] text-neutral-500">{cardUrl}</div>
-
-          {NFC_OK ? (
-            <>
-              <Button className="mt-4" disabled={!!busy} onClick={write}>
-                {busy === "write" ? "Ακούμπησε την κάρτα…" : "Γράψιμο στην κάρτα"}
-              </Button>
-              <p className="f-text mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-500">
-                Πάτα το κουμπί και ακούμπησε την άγραφη κάρτα στην πλάτη του κινητού.
-              </p>
-            </>
-          ) : (
-            <p className="f-text mt-4 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
-              Το γράψιμο κάρτας θέλει Android με Chrome. Άνοιξε τη σελίδα διαχείρισης από εκεί
-              και ξαναμπές στην καρτέλα του πελάτη.
-            </p>
-          )}
-
-          <div className="mt-5 flex flex-wrap gap-2 border-t border-neutral-300 pt-4">
-            <Button variant="ghost" disabled={!!busy} onClick={() => issue(true)}>
-              {busy === "new" ? "…" : "Νέο κλειδί (χάθηκε η κάρτα)"}
-            </Button>
-            <Button variant="ghost" onClick={() => setToken("")}>Κλείσιμο</Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -3303,7 +3200,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
 /* Κενή φόρμα νέου πελάτη. Ίδια πεδία με την εγγραφή στην εφαρμογή. */
 const NEW_CLIENT = { first_name: "", last_name: "", phone: "", email: "", pin: "", marketing: false };
 
-function People({ flash, onAuthFail, refreshKey }) {
+function People({ flash, onAuthFail, refreshKey, openId, onOpened }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3351,6 +3248,23 @@ function People({ flash, onAuthFail, refreshKey }) {
     if (error === "AUTH") { onAuthFail(); return; }
     setHistory(data || []);
   };
+
+  /* Ήρθαμε από το Πρόγραμμα με πάτημα σε όνομα: ανοίγει κατευθείαν η καρτέλα. */
+  useEffect(() => {
+    if (!openId) return;
+    let alive = true;
+    (async () => {
+      const { data, error } = await rpc("admin_clients", { p_search: "" });
+      if (!alive) return;
+      if (onOpened) onOpened();
+      if (error === "AUTH") { onAuthFail(); return; }
+      const row = (data || []).find((r) => r.id === openId);
+      if (!row) { flash("Ο πελάτης δεν βρέθηκε"); return; }
+      openClient(row);
+      window.scrollTo(0, 0);
+    })();
+    return () => { alive = false; };
+  }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setNew = (patch) => { setNewForm((f) => ({ ...f, ...patch })); setNewErr(""); };
 
@@ -3557,8 +3471,6 @@ function People({ flash, onAuthFail, refreshKey }) {
             ))}
           </div>
         )}
-
-        <CardPanel client={sel} flash={flash} onAuthFail={onAuthFail} onChanged={load} />
 
         <div className="mt-12 border-t-2 border-black pt-6">
           <h3 className="f-display text-[13px] font-bold uppercase tracking-wide text-neutral-500">
@@ -3769,7 +3681,7 @@ function People({ flash, onAuthFail, refreshKey }) {
                     {Math.max(0, r.credits_total - (r.credits_used || 0))}/{r.credits_total}
                   </span>
                 )}
-                {r.has_card && <span className="ml-2 border border-neutral-300 px-1.5 py-0.5 text-[10px] uppercase">κάρτα</span>}
+
               </div>
             </button>
           ))}
