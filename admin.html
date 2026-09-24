@@ -65,6 +65,11 @@ body { -webkit-tap-highlight-color: transparent; }
 
 /* Τα ονόματα στη λίστα πελατών: γκρι αντί για άσπρο, να μη φωνάζουν. */
 [data-theme="dark"] .client-name { color: #B4B4B4 !important; }
+/* Κράτηση ανανέωσης: κίτρινο πλαίσιο/ετικέτα με μαύρα γράμματα και στα δύο θέματα. */
+/* Διπλή/τριπλή κλάση = πιο «βαρύς» κανόνας από του σκούρου θέματος. */
+.renewal-info.renewal-info, .renewal-info.renewal-info * { color: #0C0C0C !important; }
+.renewal-info.renewal-info .text-neutral-500 { color: #4A4A4A !important; }
+.renewal-tag.renewal-tag.renewal-tag { color: #0C0C0C !important; border-color: #0C0C0C !important; background-color: #FFE600 !important; }
 @media (hover: hover) and (pointer: fine) {
 [data-theme="dark"] .hover\:bg-neutral-50:hover { background-color: #161616 !important; }
 }
@@ -2039,7 +2044,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                       <span className="f-mono text-[20px] leading-none tracking-tight">{s.slot_time}</span>
                       {fresh.byKey.has(date + " " + s.slot_time) && <Dot />}
                       {renewals > 0 && (
-                        <span className="f-display border border-black bg-[#FFE600] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
+                        <span className="renewal-tag f-display border border-black bg-[#FFE600] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
                           Ανανέωση{renewals > 1 ? ` ×${renewals}` : ""}
                         </span>
                       )}
@@ -2062,7 +2067,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                         {people.map((p) => (
                           <div key={p.booking_id} className={`flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
                             p.renewal ? "-mx-5 border-2 border-[#E6C800] bg-[#FFF3A6] px-5 sm:-mx-6 sm:px-6" : ""}`}>
-                            <div className="min-w-0">
+                            <div className={`min-w-0 ${p.renewal ? "renewal-info" : ""}`}>
                               <div className="flex items-center gap-2">
                                 {fresh.ids.has(p.booking_id) && <Dot />}
                                 <span className="f-text truncate text-[15px]">{p.name}</span>
@@ -2073,7 +2078,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                 )}
                                 {p.renewal && (
                                   /* Προπόνηση ανανέωσης: του τελείωσε το πακέτο και έρχεται να ανανεώσει. */
-                                  <span className="f-display shrink-0 border border-black bg-[#FFE600] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
+                                  <span className="renewal-tag f-display shrink-0 border border-black bg-[#FFE600] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-black">
                                     ανανεωση
                                   </span>
                                 )}
