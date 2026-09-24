@@ -1076,7 +1076,7 @@ const TABS = [
   ["people", "Πελάτες"],
   ["goals", "Στόχοι πελατών"],
   ["programs", "Προπονήσεις"],
-  ["access", "QR εφαρμογής"],
+  ["stats", "Στατιστικά"],
   ["newsletter", "Ενημερώσεις"],
   ["announce", "Ειδοποιήσεις"],
   ["settings", "Ρυθμίσεις"],
@@ -1528,12 +1528,7 @@ function App() {
       )}
       {tab === "goals" && <Goals {...props} />}
       {tab === "programs" && <Programs {...props} />}
-      {tab === "access" && (
-        <React.Fragment>
-          <Station {...props} />
-          <Access {...props} />
-        </React.Fragment>
-      )}
+      {tab === "stats" && <Stats {...props} />}
       {tab === "newsletter" && <Newsletter {...props} />}
       {tab === "announce" && <Announcements {...props} />}
       {tab === "settings" && <Settings {...props} watchError={watch.error} theme={theme} setTheme={setTheme}
@@ -3809,80 +3804,233 @@ function guessAppUrl() {
   } catch (e) { return ""; }
 }
 
-function Access({ flash, onAuthFail }) {
-  const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [guessed, setGuessed] = useState(false);
+/* ---------- Στατιστικά ωρών ----------
+   Πόσος κόσμος έρχεται σε κάθε ενεργή ώρα, κατά μέσο όρο ανά μέρα.
+   Μετράμε μόνο μέρες που πέρασαν και μόνο όσους πήραν θέση (όχι
+   ακυρώσεις, όχι όσους δεν ήρθαν). Από εκεί βγαίνουν οι πιο γεμάτες,
+   οι πιο άδειες ώρες και οι προτάσεις για συγχώνευση γειτονικών ωρών. */
+const STAT_PERIODS = [[28, "4 εβδομάδες"], [90, "3 μήνες"], [365, "12 μήνες"]];
+/* Δευτέρα πρώτη, όπως τη σκέφτεται το γυμναστήριο. */
+const STAT_DAYS = [[-1, "Όλες"], [1, "Δευ"], [2, "Τρί"], [3, "Τετ"], [4, "Πέμ"], [5, "Παρ"], [6, "Σάβ"], [0, "Κυρ"]];
+const DAYS_EVERY = ["κάθε Κυριακή", "κάθε Δευτέρα", "κάθε Τρίτη", "κάθε Τετάρτη", "κάθε Πέμπτη", "κάθε Παρασκευή", "κάθε Σάββατο"];
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await rpc("admin_get_settings", {});
-      setLoading(false);
-      if (error === "AUTH") { onAuthFail(); return; }
-      if (error || !data) return;
-      const saved = (data.site_url || "").trim();
-      if (saved) { setUrl(saved); return; }
-      setUrl(guessAppUrl());
-      setGuessed(true);
-    })();
-  }, [onAuthFail]);
+const fmtAvg = (v) => (v >= 10 ? String(Math.round(v)) : (Math.round(v * 10) / 10).toString().replace(".", ","));
+const hourNum = (t) => Number(String(t).slice(0, 2));
 
-  const save = async () => {
-    const clean = url.trim();
-    if (!clean) { flash("Γράψε πρώτα τη διεύθυνση"); return; }
-    const { data, error } = await rpc("admin_update_settings", { p_patch: { site_url: clean } });
+function buildStats(rows, weekday) {
+  const pick = weekday === -1 ? rows : rows.filter((r) => r.weekday === weekday);
+  const byTime = new Map();
+  pick.forEach((r) => {
+    const x = byTime.get(r.time) || { time: r.time, days: 0, cap: 0, people: 0, peak: 0, capNow: 0 };
+    x.days += r.days_open;
+    x.cap += r.capacity;
+    x.people += r.people;
+    x.peak = Math.max(x.peak, r.peak);
+    x.capNow = Math.max(x.capNow, r.cap_now);
+    byTime.set(r.time, x);
+  });
+  const hours = Array.from(byTime.values())
+    .map((x) => ({
+      ...x,
+      avg: x.days ? x.people / x.days : 0,
+      avgCap: x.days ? x.cap / x.days : x.capNow,
+      fill: x.cap ? x.people / x.cap : 0,
+    }))
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const withData = hours.filter((h) => h.days > 0);
+  const busiest = withData.filter((h) => h.avg > 0).sort((a, b) => b.avg - a.avg || a.time.localeCompare(b.time)).slice(0, 3);
+  const quietest = withData.slice().sort((a, b) => a.avg - b.avg || a.time.localeCompare(b.time))
+    .filter((h) => !busiest.includes(h)).slice(0, 3);
+  const people = withData.reduce((n, h) => n + h.people, 0);
+  const cap = withData.reduce((n, h) => n + h.cap, 0);
+
+  /* Συγχώνευση: δύο διαδοχικές ώρες που και οι δύο είναι σχεδόν άδειες
+     και μαζί χωράνε άνετα σε μία. Κρατάμε την ώρα με τον περισσότερο
+     κόσμο. Πρώτα τα πιο άδεια ζευγάρια, χωρίς να μπλέκει η ίδια ώρα σε
+     δύο προτάσεις. Θέλει τουλάχιστον δύο μέρες δεδομένων ανά ώρα. */
+  const pairs = [];
+  for (let i = 0; i + 1 < hours.length; i++) {
+    const a = hours[i], b = hours[i + 1];
+    if (hourNum(b.time) - hourNum(a.time) !== 1) continue;
+    if (a.days < 2 || b.days < 2) continue;
+    const room = Math.min(a.avgCap, b.avgCap);
+    const together = a.avg + b.avg;
+    const peakTogether = a.peak + b.peak;
+    if (!room || a.fill > 0.3 || b.fill > 0.3) continue;
+    if (together > room * 0.6) continue;
+    const keep = b.avg > a.avg ? b : a;
+    const drop = keep === a ? b : a;
+    pairs.push({ a, b, keep, drop, together, room, peakTogether, tight: peakTogether > room });
+  }
+  pairs.sort((x, y) => x.together / x.room - y.together / y.room);
+  const used = new Set();
+  const merges = [];
+  pairs.forEach((p) => {
+    if (used.has(p.a.time) || used.has(p.b.time)) return;
+    used.add(p.a.time); used.add(p.b.time);
+    merges.push(p);
+  });
+  merges.sort((x, y) => x.a.time.localeCompare(y.a.time));
+
+  return { hours, withData, busiest, quietest, merges, fill: cap ? people / cap : 0, people };
+}
+
+function StatHourRow({ h, tag }) {
+  const pct = Math.round(h.fill * 100);
+  return (
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="f-mono text-[17px] leading-none">{h.time}</span>
+          {tag === "busy" && (
+            <span className="f-display border border-black bg-black px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              Πολύς κόσμος
+            </span>
+          )}
+          {tag === "quiet" && (
+            <span className="f-display border border-neutral-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+              Λίγος κόσμος
+            </span>
+          )}
+        </span>
+        <span className="f-mono shrink-0 text-[13px] text-neutral-600">
+          {h.days ? `${fmtAvg(h.avg)} / ${fmtAvg(h.avgCap)} · ${pct}%` : "χωρίς δεδομένα"}
+        </span>
+      </div>
+      <div className="mt-2 h-[12px] w-full border border-black bg-white">
+        <div className="h-full bg-black" style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function Stats({ flash, onAuthFail }) {
+  const [days, setDays] = useState(28);
+  const [weekday, setWeekday] = useState(-1);
+  const [data, setData] = useState(null);
+
+  const load = useCallback(async () => {
+    setData(null);
+    const { data: d, error } = await rpc("admin_hour_stats", { p_days: days });
     if (error === "AUTH") { onAuthFail(); return; }
-    if (error || !data?.ok) { flash("Δεν αποθηκεύτηκε"); return; }
-    setUrl(clean);
-    setGuessed(false);
-    flash("Αποθηκεύτηκε");
-  };
+    if (error) { flash("Δεν φόρτωσαν τα στατιστικά"); setData(false); return; }
+    setData(d || { rows: [] });
+  }, [days, flash, onAuthFail]);
 
-  const copy = async (text) => {
-    try { await navigator.clipboard.writeText(text); flash("Αντιγράφηκε"); }
-    catch (e) { flash("Η αντιγραφή δεν είναι διαθέσιμη"); }
-  };
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>;
+  const st = useMemo(() => (data ? buildStats(data.rows || [], weekday) : null), [data, weekday]);
+  const tagOf = (h) => (!st ? null
+    : st.busiest.includes(h) && h.avg > 0 ? "busy"
+    : st.quietest.includes(h) ? "quiet" : null);
+  const dayWord = weekday === -1 ? "όλες τις μέρες" : DAYS_EVERY[weekday];
+  const fmtRange = (s) => { if (!s) return ""; const d = parseISO(String(s)); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 
   return (
     <div className="px-5 sm:px-6">
-      <h2 className="f-display border-t-2 border-black pt-6 text-[24px] font-extrabold uppercase tracking-tight">QR εφαρμογής</h2>
+      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Στατιστικά</h2>
+      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
+        Πόσος κόσμος έρχεται σε κάθε ενεργή ώρα, κατά μέσο όρο ανά μέρα. Μετράνε μόνο μέρες
+        που πέρασαν και μόνο όσοι πήραν θέση — οι ακυρώσεις και όσοι δεν ήρθαν δεν μετράνε.
+      </p>
 
-      <div className="mt-6 max-w-xl">
-        <label className="f-text text-[13px] text-neutral-500">Διεύθυνση εφαρμογής πελατών</label>
-        <div className="mt-2 flex gap-2">
-          <input value={url} onChange={(e) => { setUrl(e.target.value); setGuessed(false); }}
-            placeholder="https://…/index.html"
-            className="f-mono h-12 min-w-0 flex-1 border-2 border-black px-3 text-[14px] outline-none sm:px-4" />
-          <Button onClick={save}>Αποθήκευση</Button>
-        </div>
-        {guessed && (
-          <p className="f-text mt-2 text-[12px] leading-relaxed text-neutral-500">
-            Συμπληρώθηκε από τη διεύθυνση αυτής της σελίδας. Δες αν είναι σωστή
-            και πάτα Αποθήκευση.
-          </p>
-        )}
+      <div className="mt-5 flex border-2 border-black">
+        {STAT_PERIODS.map(([v, label], i) => (
+          <button key={v} onClick={() => setDays(v)}
+            className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
+              i > 0 ? "border-l-2 border-black" : ""} ${days === v ? "bg-black text-white" : "bg-white"}`}>
+            {label}
+          </button>
+        ))}
       </div>
 
-      {url ? (
-        <div className="mt-8 grid max-w-sm gap-6">
-          <div className="border-2 border-black p-5">
-            <div className="f-display text-[14px] font-bold uppercase tracking-wide">Άνοιγμα εφαρμογής</div>
-            <div className="f-mono mt-1 break-all text-[12px] text-neutral-500">{url}</div>
-            <div className="mt-4 flex justify-center border-2 border-black p-3"><QRCode text={url} size={170} /></div>
-            <div className="mt-4 flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => copy(url)}>Αντιγραφή</Button>
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => downloadQrSvg(url, "qr-efarmogi.svg")}>SVG</Button>
-            </div>
-          </div>
+      <div className="mt-3 grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
+        {STAT_DAYS.map(([v, label]) => (
+          <button key={v} onClick={() => setWeekday(v)}
+            className={`f-display border-2 py-2 text-[12px] font-bold uppercase sm:px-4 sm:text-[13px] ${
+              weekday === v ? "border-black bg-black text-white" : "border-neutral-300 hover:border-black"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {data === null ? (
+        <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
+      ) : data === false ? (
+        <div className="f-text py-10 text-[14px] text-neutral-500">Δεν φόρτωσαν τα στατιστικά.</div>
+      ) : st.hours.length === 0 ? (
+        <div className="f-text mt-6 border-2 border-dashed border-neutral-300 py-12 text-center text-[14px] text-neutral-500">
+          Καμία ενεργή ώρα {weekday === -1 ? "" : DAYS_EVERY[weekday]}.
         </div>
       ) : (
-        <p className="f-text mt-8 text-[14px] text-neutral-500">
-          Συμπλήρωσε τη διεύθυνση πιο πάνω και πάτα Αποθήκευση για να δημιουργηθεί το QR.
-        </p>
-      )}
+        <>
+          <div className="f-mono mt-4 text-[12px] text-neutral-500">
+            {fmtRange(data.from)} – {fmtRange(data.to)} · {dayWord}
+          </div>
 
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+            <Kpi label="Ενεργές ώρες" value={st.hours.length} />
+            <Kpi label="Μέση πληρότητα" value={`${Math.round(st.fill * 100)}%`} />
+            <Kpi label="Πιο γεμάτη" value={st.busiest[0] && st.busiest[0].avg > 0 ? st.busiest[0].time : "—"}
+              note={st.busiest[0] && st.busiest[0].avg > 0 ? `${fmtAvg(st.busiest[0].avg)} άτομα/μέρα` : ""} />
+            <Kpi label="Πιο άδεια" value={st.quietest[0] ? st.quietest[0].time : "—"}
+              note={st.quietest[0] ? `${fmtAvg(st.quietest[0].avg)} άτομα/μέρα` : ""} />
+          </div>
+
+          {st.withData.length === 0 && (
+            <p className="f-text mt-5 text-[13px] text-neutral-500">
+              Δεν υπάρχουν ακόμα κρατήσεις σε αυτό το διάστημα.
+            </p>
+          )}
+
+          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+            Προτάσεις συγχώνευσης
+          </h3>
+          {st.merges.length === 0 ? (
+            <p className="f-text mt-2 max-w-[60ch] border-t-2 border-black pt-3 text-[13px] leading-relaxed text-neutral-500">
+              Καμία πρόταση για {dayWord}. Δεν υπάρχουν δύο διαδοχικές ώρες που να είναι και οι δύο
+              σχεδόν άδειες.
+            </p>
+          ) : (
+            <div className="mt-2 space-y-3">
+              {st.merges.map((m) => (
+                <div key={m.a.time} className="border-2 border-black p-4">
+                  <div className="f-display text-[16px] font-extrabold uppercase tracking-tight">
+                    {m.a.time} + {m.b.time} → {m.keep.time}
+                  </div>
+                  <p className="f-text mt-1.5 text-[14px] leading-relaxed">
+                    Κράτα τις <strong>{m.keep.time}</strong> και κλείσε τις <strong>{m.drop.time}</strong> {dayWord}.
+                    Μαζί έχουν κατά μέσο όρο {fmtAvg(m.together)} άτομα τη μέρα και χωράνε
+                    στις {fmtAvg(m.room)} θέσεις μίας ώρας.
+                  </p>
+                  <div className="f-mono mt-2 text-[12px] text-neutral-500">
+                    {m.a.time}: {fmtAvg(m.a.avg)}/μέρα · {m.b.time}: {fmtAvg(m.b.avg)}/μέρα
+                  </div>
+                  {m.tight && (
+                    <p className="f-text mt-2 text-[12px] leading-relaxed text-neutral-600">
+                      Προσοχή: σε μία μέρα ήρθαν μαζί {m.peakTogether} άτομα, περισσότερα από τις θέσεις.
+                      Αν συγχωνεύσεις, ίσως χρειαστεί να ανεβάσεις τις θέσεις της ώρας.
+                    </p>
+                  )}
+                </div>
+              ))}
+              <p className="f-text text-[12px] leading-relaxed text-neutral-500">
+                Η συγχώνευση γίνεται από τη «Χωρητικότητα» → «Κάθε εβδομάδα»: βάλε 0 θέσεις
+                στην ώρα που κλείνει.
+              </p>
+            </div>
+          )}
+
+          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
+            Όλες οι ενεργές ώρες
+          </h3>
+          <div className="f-text mt-1 text-[12px] text-neutral-500">Μέσος όρος ατόμων / θέσεις ανά μέρα · πληρότητα</div>
+          <div className="mt-2 divide-y divide-neutral-200 border-y-2 border-black">
+            {st.hours.map((h) => <StatHourRow key={h.time} h={h} tag={tagOf(h)} />)}
+          </div>
+        </>
+      )}
       <div className="h-10" />
     </div>
   );
