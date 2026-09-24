@@ -2063,6 +2063,12 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                     χωρίς κράτηση
                                   </span>
                                 )}
+                                {p.renewal && (
+                                  /* Προπόνηση ανανέωσης: του τελείωσε το πακέτο και έρχεται να ανανεώσει. */
+                                  <span className="f-display shrink-0 border border-black bg-black px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                    ανανεωση
+                                  </span>
+                                )}
                               </div>
                               <div className="f-mono text-[12px] text-neutral-500">{p.phone}</div>
                               {p.status !== "checked_in" && tooEarly && (
