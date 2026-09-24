@@ -4186,6 +4186,22 @@ function CreditsBadge({ credits }) {
       </div>
     );
   }
+  /* Τέλειωσε το πακέτο αλλά έχει την προπόνηση ανανέωσης: δεν δείχνουμε
+     «0/Χ», που μπερδεύει, αλλά την 1 κράτηση ανανέωσης. */
+  if (credits.remaining <= 0 && (credits.renewal_open || credits.renewal_pending)) {
+    const open = !!credits.renewal_open;
+    return (
+      <div className="shrink-0 border border-black px-3 py-2 text-center"
+        aria-label={open ? "1 κράτηση ανανέωσης διαθέσιμη" : "Η κράτηση ανανέωσης έχει κλειστεί"}>
+        <div className="f-text text-[10px] uppercase leading-none text-neutral-400">Ανανέωση</div>
+        <div className="mt-1 whitespace-nowrap leading-none">
+          <span className="f-mono text-[26px]">{open ? 1 : 0}</span>
+          <span className="f-mono text-[13px] text-neutral-400">/1</span>
+        </div>
+        <div className="f-text mt-1 text-[10px] leading-none text-neutral-400">{open ? "διαθέσιμη" : "κλεισμένη"}</div>
+      </div>
+    );
+  }
   const empty = credits.remaining <= 0;
   return (
     <div className={`shrink-0 border px-3 py-2 text-center ${empty ? "border-[#C81E1E]" : "border-black"}`}
@@ -4482,16 +4498,16 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
                   <div className="min-w-0">
                     <FlipNum value={s.slot_time} className="f-mono block text-[28px] leading-none tracking-tight" />
                     <div className="mt-2">
-                      {myB ? (
+                      {myB && myB.renewal && st === "booked" ? (
+                        /* Προπόνηση ανανέωσης: μία ετικέτα αντί για «Έχεις κράτηση». */
+                        <span className="f-display border border-black bg-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                          Κράτηση ανανέωσης
+                        </span>
+                      ) : myB ? (
                         <span className={`f-display border px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
                           st === "absent_pending" || st === "forfeit" || st === "refunded"
                             ? "border-neutral-400 text-neutral-500" : "border-black"}`}>
                           {STATE_LABEL[st] || "Έχεις κράτηση"}
-                        </span>
-                      ) : null}
-                      {myB && myB.renewal && st === "booked" ? (
-                        <span className="f-display ml-2 border border-black bg-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-                          Ανανέωση
                         </span>
                       ) : null}
                       {!myB && full ? (
