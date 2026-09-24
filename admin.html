@@ -2146,7 +2146,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                     )}
                     {(s.waiting || []).length > 0 && (
                       <div className="f-text mt-3 border-t border-neutral-300 pt-3 text-[13px] text-neutral-500">
-                        Λίστα αναμονής: {s.waiting.join(", ")}
+                        Δήλωσαν ενδιαφέρον: {s.waiting.join(", ")}
                       </div>
                     )}
 
@@ -2781,6 +2781,7 @@ const CREDIT_KIND = {
   refund: "Επιστροφή (ακύρωση)",
   noshow: "Επιστροφή (δεν ήρθε)",
   adjust: "Διόρθωση συνόλου",
+  expire: "Λήξη πακέτου",
 };
 const CREDIT_ROLE = { anon: "Πελάτης", authenticated: "Γραμματεία", service_role: "Σύστημα", system: "Σύστημα" };
 const CREDIT_PRESETS = [4, 8, 12, 16, 20];
@@ -2837,7 +2838,7 @@ const PDF_LINE = "#BDBDBD";
 const PDF_ZEBRA = "#F3F3F3";
 const PDF_RED = "#B42318";
 const PDF_RED_BG = "#FDECEA";
-const KIND_COLOR = { use: PDF_INK, refund: "#1B7F3B", noshow: "#1B7F3B", renew: "#1F4E99", adjust: "#8A5A00" };
+const KIND_COLOR = { use: PDF_INK, refund: "#1B7F3B", noshow: "#1B7F3B", renew: "#1F4E99", adjust: "#8A5A00", expire: "#B42318" };
 
 const pdfGrid = {
   fillColor: (row) => (row === 0 ? PDF_INK : row % 2 === 0 ? PDF_ZEBRA : null),
@@ -2876,6 +2877,7 @@ function groupCredits(rows) {
       total: last.total,
       used: last.used,
       remaining: last.remaining,
+      lost: g.rows.reduce((a, x) => a + (x.kind === "expire" ? Number(x.lost) || 0 : 0), 0),
       since: renew ? athensParts(renew.at) : athensParts(g.rows[0].at),
     };
   });
@@ -2892,10 +2894,11 @@ function summaryStrip(g) {
   });
   return {
     table: {
-      widths: ["*", "*", "*", "*"],
+      widths: g.lost > 0 ? ["*", "*", "*", "*", "*"] : ["*", "*", "*", "*"],
       body: [[
         cell("ΣΥΝΟΛΟ ΠΑΚΕΤΟΥ", g.total),
-        cell("ΧΡΗΣΙΜΟΠΟΙΗΜΕΝΕΣ", g.used),
+        cell("ΧΡΗΣΙΜΟΠΟΙΗΜΕΝΕΣ", g.lost > 0 ? Number(g.used) - g.lost : g.used),
+        ...(g.lost > 0 ? [cell("ΧΑΘΗΚΑΝ (ΛΗΞΗ)", g.lost, true)] : []),
         cell("ΔΙΑΘΕΣΙΜΕΣ", g.remaining, Number(g.remaining) <= 0),
         cell("ΑΝΑΝΕΩΣΗ ΠΑΚΕΤΟΥ", `${g.since.date} ${g.since.time}`),
       ]],
@@ -2917,7 +2920,8 @@ function detailTable(g) {
       { text: String(i + 1), alignment: "center", color: PDF_MUTED },
       when.date,
       when.time,
-      { text: CREDIT_KIND[r.kind] || r.kind, color: KIND_COLOR[r.kind] || PDF_INK, bold: r.kind === "renew" },
+      { text: r.kind === "expire" && r.lost ? `Λήξη πακέτου — χάθηκαν ${r.lost}` : (CREDIT_KIND[r.kind] || r.kind),
+        color: KIND_COLOR[r.kind] || PDF_INK, bold: r.kind === "renew" || r.kind === "expire" },
       slotText(r),
       CREDIT_ROLE[r.by_role] || r.by_role || "",
       { text: r.total === null || r.total === undefined ? "—" : String(r.total), alignment: "right" },
@@ -3062,18 +3066,23 @@ async function exportCredits({ clientId, name, flash, onAuthFail }) {
    γυρίζει το σκούρο θέμα· το κίτρινο μένει ίδιο και στα δύο. */
 const CREDIT_HELD_COLOR = "#EAB308";
 
-function CreditsPie({ total, used, held, size = 180 }) {
+/* Κρατήσεις που χάθηκαν επειδή έληξε το πακέτο. */
+const CREDIT_LOST_COLOR = "#C0231F";
+
+function CreditsPie({ total, used, held, lost = 0, size = 180 }) {
   const safeTotal = Math.max(0, Number(total) || 0);
   const safeUsed = Math.min(safeTotal, Math.max(0, Number(used) || 0));
   const safeHeld = Math.min(safeUsed, Math.max(0, Number(held) || 0));
+  const safeLost = Math.min(safeUsed - safeHeld, Math.max(0, Number(lost) || 0));
   const left = safeTotal - safeUsed;
-  const done = safeUsed - safeHeld;
+  const done = safeUsed - safeHeld - safeLost;
   const r = 15.9155;
   const pct = (n) => (safeTotal ? (n / safeTotal) * 100 : 0);
   const parts = [
     { n: left, cls: "text-black" },
     { n: safeHeld, cls: "", color: CREDIT_HELD_COLOR },
     { n: done, cls: "text-neutral-300" },
+    { n: safeLost, cls: "", color: CREDIT_LOST_COLOR },
   ];
   let acc = 0;
   return (
@@ -3107,7 +3116,9 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
   /* Κρατημένες: χρεωμένες ώρες που δεν έχουν γίνει ακόμα. Έρχονται από
      τη βάση ώστε να μετράνε μόνο οι κρατήσεις του τρέχοντος πακέτου. */
   const held = has ? Math.min(used, client.credits_held || 0) : 0;
-  const spent = used - held;
+  /* Χάθηκαν: όσες έμειναν αχρησιμοποίητες όταν έληξε το πακέτο. */
+  const lost = has ? Math.min(used - held, client.credits_lost || 0) : 0;
+  const spent = used - held - lost;
   const [mode, setMode] = useState(null); // null | "renew" | "adjust" | "clear"
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3137,6 +3148,8 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
       credits_used: data.credits_used,
       credits_held: data.credits_held || 0,
       credits_since: data.credits_since,
+      credits_expires_at: data.credits_expires_at,
+      credits_lost: data.credits_lost || 0,
     });
     flash(mode === "renew" ? (has ? "Το πακέτο ανανεώθηκε" : "Το πακέτο ορίστηκε")
       : mode === "adjust" ? "Το σύνολο άλλαξε" : "Το πακέτο καταργήθηκε — ο πελάτης δεν μπορεί να κλείσει ώρα");
@@ -3150,6 +3163,8 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
   };
 
   const since = client.credits_since ? athensParts(client.credits_since) : null;
+  const expires = client.credits_expires_at ? athensParts(client.credits_expires_at) : null;
+  const expired = !!client.credits_expires_at && new Date(client.credits_expires_at).getTime() <= Date.now();
 
   return (
     <div className="mt-10 border-t-2 border-black pt-6">
@@ -3165,7 +3180,7 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
         </p>
       ) : (
         <div className="mt-4 flex flex-col items-center gap-6 sm:flex-row sm:items-center">
-          <CreditsPie total={total} used={used} held={held} />
+          <CreditsPie total={total} used={used} held={held} lost={lost} />
           <div className="w-full space-y-3">
             <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
               <span className="flex items-center gap-2 f-text text-[14px]">
@@ -3187,6 +3202,15 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
               </span>
               <span className="f-mono text-[18px]">{spent}</span>
             </div>
+            {lost > 0 && (
+              <div className="flex items-center justify-between gap-3 border-b border-neutral-200 pb-2">
+                <span className="flex items-center gap-2 f-text text-[14px] text-red-700">
+                  <span className="inline-block h-3.5 w-3.5" style={{ background: CREDIT_LOST_COLOR }} />
+                  Χάθηκαν (έληξε το πακέτο)
+                </span>
+                <span className="f-mono text-[18px] text-red-700">{lost}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <span className="f-text text-[14px] text-neutral-500">Σύνολο πακέτου</span>
               <span className="f-mono text-[18px]">{total}</span>
@@ -3194,7 +3218,16 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
             {since && (
               <div className="f-mono text-[12px] text-neutral-400">Από {since.date} · {since.time}</div>
             )}
-            {total - used <= 0 && (
+            {expires && (
+              <div className={`f-mono text-[12px] ${expired ? "text-red-700" : "text-neutral-500"}`}>
+                {expired ? "Έληξε" : "Λήγει"} {expires.date} · {expires.time}
+              </div>
+            )}
+            {expired ? (
+              <div className="f-text border-2 border-red-600 bg-red-50 px-3 py-2 text-[13px] text-red-800">
+                Το πακέτο έληξε — {lost > 0 ? `έχασε ${lost} ${lost === 1 ? "κράτηση" : "κρατήσεις"} που δεν χρησιμοποίησε` : "δεν είχε μείνει καμία κράτηση"}. Ο πελάτης μπορεί να κλείσει μόνο 1 προπόνηση για να έρθει να ανανεώσει.
+              </div>
+            ) : total - used <= 0 && (
               <div className="f-text border-2 border-red-600 bg-red-50 px-3 py-2 text-[13px] text-red-800">
                 Τέλειωσαν — η εφαρμογή του πελάτη είναι κλειδωμένη μέχρι την ανανέωση.
               </div>
@@ -4469,6 +4502,9 @@ function Settings({ flash, onAuthFail, watchError, theme, setTheme, scale, setSc
         </Row>
         <Row label="Κρατήσεις μπροστά" hint="πόσες μέρες μπροστά ανοίγει το πρόγραμμα">
           <Stepper value={s.max_days_ahead} min={1} max={60} suffix="μ" onChange={(v) => set("max_days_ahead", v)} />
+        </Row>
+        <Row label="Διάρκεια πακέτου" hint="μέρες από την ανανέωση· μετά οι κρατήσεις που έμειναν χάνονται">
+          <Stepper value={s.package_days || 30} min={1} max={365} suffix="μ" onChange={(v) => set("package_days", v)} />
         </Row>
       </div>
 

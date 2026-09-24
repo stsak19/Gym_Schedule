@@ -2230,6 +2230,12 @@ const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDat
 const parseISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const fmtDay = (s) => { const d = parseISO(s); return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+/* Ημερομηνία λήξης πακέτου (timestamp) → «24/10». */
+const fmtShortDate = (ts) => {
+  const d = new Date(ts);
+  if (isNaN(d)) return "";
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
 const fmtDayLong = (s) => { const d = parseISO(s); return `${DAYS_LONG[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 const slotDate = (date, time) => {
   const [y, m, d] = String(date).split("-").map(Number);
@@ -2774,7 +2780,7 @@ function PrivacyPolicy({ onClose }) {
 
         <PolicySection title="Γιατί τα κρατάμε">
           <p>
-            Για να δουλεύει η κράτηση, η λίστα αναμονής και η είσοδος στο γυμναστήριο.
+            Για να δουλεύει η κράτηση, η δήλωση ενδιαφέροντος και η είσοδος στο γυμναστήριο.
             Αυτό είναι μέρος της συνεργασίας σου μαζί μας.
           </p>
           <p>
@@ -2904,7 +2910,7 @@ function PushPrompt({ session, onClose, flash }) {
         ) : (
           <>
             <p className="f-text mt-2 text-[13px] leading-relaxed text-neutral-600">
-              Θα σε ειδοποιούμε όταν ελευθερώνεται θέση από τη λίστα αναμονής, όταν
+              Θα σε ειδοποιούμε όταν σου κλείνεται θέση από δήλωση ενδιαφέροντος, όταν
               ακυρώνεται κράτησή σου, και λίγο πριν την προπόνηση. Μπορείς να το
               κλείσεις όποτε θέλεις από τις ρυθμίσεις.
             </p>
@@ -4212,7 +4218,9 @@ function CreditsBadge({ credits }) {
         <span className={`f-mono text-[26px] ${empty ? "text-[#C81E1E]" : ""}`}>{credits.remaining}</span>
         <span className="f-mono text-[13px] text-neutral-400">/{credits.total}</span>
       </div>
-      <div className="f-text mt-1 text-[10px] leading-none text-neutral-400">διαθέσιμες</div>
+      <div className="f-text mt-1 text-[10px] leading-none text-neutral-400">
+        {credits.expires_at && !empty ? `έως ${fmtShortDate(credits.expires_at)}` : "διαθέσιμες"}
+      </div>
     </div>
   );
 }
@@ -4221,6 +4229,27 @@ function CreditsBadge({ credits }) {
    Βγαίνει στο κέντρο της οθόνης λίγα λεπτά μετά την ώρα της κράτησης
    (settings.checkin_prompt_min, 10 λεπτά). Δεν κλείνει χωρίς απάντηση.
    ΝΑΙ κάνει check-in. ΟΧΙ ειδοποιεί τη διαχείριση. */
+/* Ερώτηση με 2–3 επιλογές (δήλωση ενδιαφέροντος / εναλλακτική κράτηση). */
+function ChoiceDialog({ title, text, options, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+      style={{ background: "rgba(0,0,0,0.6)" }} role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="w-full max-w-sm border border-black bg-white p-6 text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="text-[40px] leading-none">🙋</div>
+        <h2 className="f-display mt-3 text-[22px] font-extrabold uppercase leading-tight tracking-tight">{title}</h2>
+        <p className="f-text mt-3 text-[14px] leading-relaxed text-neutral-600">{text}</p>
+        <div className="mt-5 space-y-2">
+          {options.map((o, i) => (
+            <Button key={i} className="w-full" variant={o.variant || (i === 0 ? "primary" : "outline")}
+              onClick={o.onClick}>{o.label}</Button>
+          ))}
+          <Button variant="ghost" className="w-full" onClick={onClose}>Άκυρο</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CheckinPrompt({ booking, busy, onAnswer }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6"
@@ -4347,7 +4376,10 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
   const renewalOpen = !!credits && !noPackage && credits.renewal_open === true;
   const renewalPending = !!credits && !noPackage && credits.renewal_pending === true;
   const noCredits = !!credits && (noPackage || (credits.remaining <= 0 && !renewalOpen));
+  /* Δήλωση ενδιαφέροντος: θέλει διαθέσιμη κράτηση — ή μια κράτηση της ίδιας
+     μέρας που θα ακυρωθεί αν ελευθερωθεί θέση (εναλλακτική). */
   const noWaitlist = noCredits || renewalOpen;
+  const [ask, setAsk] = useState(null);
 
   const days = useMemo(() => {
     const base = new Date(); base.setHours(0, 0, 0, 0);
@@ -4381,7 +4413,7 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
 
     const waits = {};
     const wl = (mine.data && mine.data.waitlist) || [];
-    for (const w of wl) if (w.date === date) waits[w.time] = true;
+    for (const w of wl) if (w.date === date) waits[w.time] = w;
     setMyWaits(waits);
   }, [date, flash, session.clientId, onMine]);
 
@@ -4390,9 +4422,27 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
     if (seenSig.current !== null && sig !== seenSig.current) load(true);
   }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const book = async (time) => {
+  /* Έχει δηλώσει ενδιαφέρον για άλλη ώρα της ίδιας μέρας χωρίς εναλλακτική;
+     Ρωτάμε αν αυτή η κράτηση είναι η εναλλακτική της. */
+  const book = (time) => {
+    const open = Object.values(myWaits).filter((w) => w.time !== time && !w.backup_time);
+    if (open.length === 0) return doBook(time, null);
+    const w = open[0];
+    setAsk({
+      title: "Είναι εναλλακτική;",
+      text: `Έχεις δηλώσει ενδιαφέρον για τις ${w.time}. Αν ελευθερωθεί θέση εκεί, σου κλείνεται αυτόματα. Θέλεις τότε να ακυρωθεί αυτόματα η κράτηση των ${time};`,
+      options: [
+        { label: `Ναι, είναι εναλλακτική`, onClick: () => { setAsk(null); doBook(time, w.id); } },
+        { label: "Όχι, θέλω και τις δύο", onClick: () => { setAsk(null); doBook(time, null); } },
+      ],
+    });
+  };
+
+  const doBook = async (time, backupFor) => {
     setBusySlot(time);
-    const { data, error } = await sb.rpc("create_booking", { p_client_id: session.clientId, p_date: date, p_time: time });
+    const args = { p_client_id: session.clientId, p_date: date, p_time: time };
+    if (backupFor) args.p_backup_for = backupFor;
+    const { data, error } = await sb.rpc("create_booking", args);
     setBusySlot(null);
     if (error || !data?.ok) {
       flash(data?.error || "Κάτι πήγε στραβά");
@@ -4400,8 +4450,11 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
       if (data?.no_credits) load();
       return;
     }
-    flash(data.renewal
+    flash(data.after_expiry
+      ? `Το πακέτο σου λήγει στις ${fmtShortDate(data.expires_at)} — αυτή είναι η προπόνηση ανανέωσης 💪`
+      : data.renewal
       ? `Κράτηση ${fmtDay(date)}, ${time} — τα λέμε για την ανανέωση! 💪`
+      : backupFor ? `Κράτηση ${fmtDay(date)}, ${time} · εναλλακτική`
       : `Κράτηση ${fmtDay(date)}, ${time}`);
     load();
   };
@@ -4418,16 +4471,52 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
     load();
   };
 
-  const waitlist = async (time) => {
+  /* Δήλωση ενδιαφέροντος. Αν έχει ήδη κράτηση την ίδια μέρα, ρωτάμε αν
+     εκείνη είναι η εναλλακτική (να ακυρωθεί αν του κλειστεί αυτή η ώρα). */
+  const waitlist = (time) => {
+    const same = Object.values(mine).filter((b) =>
+      b.time !== time && bookingState(b) === "booked" && !b.renewal && !b.backup_for);
+    if (same.length === 0) return doWait(time, null);
+    const canKeep = !noCredits && !renewalOpen;
+    setAsk({
+      title: "Δήλωση ενδιαφέροντος",
+      text: `Αν ελευθερωθεί θέση στις ${time}, θα σου κλειστεί αυτόματα. Να ακυρωθεί τότε η κράτηση ${same.length > 1 ? "που έχεις" : `των ${same[0].time}`};`,
+      options: [
+        ...same.map((b) => ({ label: `Ναι, ακύρωσε τις ${b.time}`, onClick: () => { setAsk(null); doWait(time, b.id); } })),
+        ...(canKeep ? [{ label: "Όχι, κράτα και τις δύο", onClick: () => { setAsk(null); doWait(time, null); } }] : []),
+      ],
+    });
+  };
+
+  const doWait = async (time, backupId) => {
     setBusySlot(time);
-    const { data, error } = await sb.rpc("join_waitlist", { p_client_id: session.clientId, p_date: date, p_time: time });
+    const args = { p_client_id: session.clientId, p_date: date, p_time: time };
+    if (backupId) args.p_backup_booking_id = backupId;
+    const { data, error } = await sb.rpc("join_waitlist", args);
     setBusySlot(null);
     if (error || !data?.ok) { flash(data?.error || "Κάτι πήγε στραβά"); if (data?.no_credits) load(); return; }
-    flash("Μπήκες στη λίστα αναμονής");
+    flash(backupId
+      ? `Δήλωσες ενδιαφέρον για τις ${time} 🙋 Αν ελευθερωθεί θέση, μεταφέρεσαι αυτόματα.`
+      : `Δήλωσες ενδιαφέρον για τις ${time} 🙋 Αν ελευθερωθεί θέση, σου κλείνεται αυτόματα.`);
+    load();
   };
+
+  const leaveWait = async (time) => {
+    setBusySlot(time);
+    const { data, error } = await sb.rpc("leave_waitlist", { p_client_id: session.clientId, p_date: date, p_time: time });
+    setBusySlot(null);
+    if (error || !data?.ok) { flash(data?.error || "Κάτι πήγε στραβά"); return; }
+    flash("Η δήλωση ενδιαφέροντος αποσύρθηκε");
+    load();
+  };
+
+  /* Υπάρχει κράτηση την ίδια μέρα που μπορεί να γίνει εναλλακτική; */
+  const hasSwapToday = Object.values(mine).some((b) =>
+    bookingState(b) === "booked" && !b.renewal && !b.backup_for);
 
   return (
     <div className="flex h-full flex-col">
+      {ask && <ChoiceDialog {...ask} onClose={() => setAsk(null)} />}
       <div className="shrink-0 mt-4 flex gap-2 overflow-x-auto px-5 pb-1">
         {days.map((d) => {
           const dd = parseISO(d), on = d === date;
@@ -4522,10 +4611,21 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
                         <span className={`f-display border px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
                           st === "absent_pending" || st === "forfeit" || st === "refunded"
                             ? "border-neutral-400 text-neutral-500" : "border-black"}`}>
-                          {STATE_LABEL[st] || "Έχεις κράτηση"}
+                          {st === "booked" && myB.backup_for ? `Εναλλακτική των ${myB.backup_for}` : (STATE_LABEL[st] || "Έχεις κράτηση")}
                         </span>
                       ) : null}
-                      {!myB && full ? (
+                      {!myB && myWaits[s.slot_time] ? (
+                        <>
+                          <span className="f-display border border-dashed border-black px-2 py-1 text-[11px] font-bold uppercase tracking-wide">
+                            Δήλωσες ενδιαφέρον{myWaits[s.slot_time].position ? ` · ${myWaits[s.slot_time].position}ος` : ""}
+                          </span>
+                          <p className="f-text mt-2 max-w-[30ch] text-[12px] leading-snug text-neutral-500">
+                            {myWaits[s.slot_time].backup_time
+                              ? `Αν ακυρώσει κάποιος, μεταφέρεσαι εδώ και η κράτηση των ${myWaits[s.slot_time].backup_time} ακυρώνεται.`
+                              : "Αν ακυρώσει κάποιος, σου κλείνεται αυτόματα. Μπορείς να κλείσεις και άλλη ώρα για σιγουριά."}
+                          </p>
+                        </>
+                      ) : !myB && full ? (
                         <span className="f-text text-[13px] text-neutral-500">Δεν υπάρχουν διαθέσιμες θέσεις</span>
                       ) : null}
                     </div>
@@ -4542,10 +4642,14 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
                         onClick={() => cancel(myB.id, s.slot_time)}>
                         Ακύρωση
                       </Button>
+                    ) : myWaits[s.slot_time] ? (
+                      <Button variant="ghost" size="sm" disabled={isBusy} onClick={() => leaveWait(s.slot_time)}>
+                        Απόσυρση
+                      </Button>
                     ) : full ? (
-                      <Button variant="outline" size="sm" disabled={isBusy || myWaits[s.slot_time] || (noWaitlist && !myWaits[s.slot_time])}
+                      <Button variant="outline" size="sm" disabled={isBusy || (noWaitlist && !hasSwapToday)}
                         onClick={() => waitlist(s.slot_time)}>
-                        {myWaits[s.slot_time] ? "Σε αναμονή" : "Αναμονή"}
+                        Δήλωση ενδιαφέροντος
                       </Button>
                     ) : (
                       <Button size="sm" disabled={isBusy || noCredits} onClick={() => book(s.slot_time)}>Κράτηση</Button>
@@ -4590,6 +4694,15 @@ function MyBookings({ session, flash, onMine }) {
     load();
   };
 
+  const leave = async (w) => {
+    setBusyId(w.id);
+    const { data: d, error } = await sb.rpc("leave_waitlist", { p_client_id: session.clientId, p_date: w.date, p_time: w.time });
+    setBusyId(null);
+    if (error || !d?.ok) { flash(d?.error || "Κάτι πήγε στραβά"); return; }
+    flash("Η δήλωση ενδιαφέροντος αποσύρθηκε");
+    load();
+  };
+
   const label = { checked_in: "Παρών", booked: "Κρατημένο",
     absent_pending: "Είπες ότι δεν ήρθες · σε αναμονή", refunded: "Δεν ήρθες · η κράτηση επιστράφηκε",
     forfeit: "Δεν ήρθες" };
@@ -4610,7 +4723,8 @@ function MyBookings({ session, flash, onMine }) {
             <div key={b.id} className="flex items-center justify-between gap-4 py-4">
               <div>
                 <span className="f-mono block text-[20px] leading-none tracking-tight">{b.time}</span>
-                <div className="f-text mt-1 text-[13px] text-neutral-500">{fmtDay(b.date)} · {label[bookingState(b)] || b.status}</div>
+                <div className="f-text mt-1 text-[13px] text-neutral-500">{fmtDay(b.date)} · {
+                  bookingState(b) === "booked" && b.backup_for ? `Εναλλακτική των ${b.backup_for}` : (label[bookingState(b)] || b.status)}</div>
               </div>
               {bookingState(b) === "booked" && (
                 <Button variant="danger" size="sm" disabled={busyId === b.id} onClick={() => cancel(b.id)}>Ακύρωση</Button>
@@ -4621,9 +4735,12 @@ function MyBookings({ session, flash, onMine }) {
             <div key={w.id} className="flex items-center justify-between gap-4 py-4">
               <div>
                 <span className="f-mono block text-[20px] leading-none tracking-tight text-neutral-400">{w.time}</span>
-                <div className="f-text mt-1 text-[13px] text-neutral-500">{fmtDay(w.date)} · Λίστα αναμονής</div>
+                <div className="f-text mt-1 text-[13px] text-neutral-500">
+                  {fmtDay(w.date)} · Δήλωση ενδιαφέροντος{w.position ? ` · ${w.position}ος` : ""}
+                  {w.backup_time ? ` · εναλλακτική ${w.backup_time}` : ""}
+                </div>
               </div>
-              <span className="f-text text-[13px] text-neutral-400">Σε αναμονή</span>
+              <Button variant="ghost" size="sm" disabled={busyId === w.id} onClick={() => leave(w)}>Απόσυρση</Button>
             </div>
           ))}
         </div>
