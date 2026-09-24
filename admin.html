@@ -1114,7 +1114,7 @@ const DECIDED_LABEL = {
 };
 
 /* ---------- Δήλωσε ότι δεν ήρθε ----------
-   Ο πελάτης πάτησε «ΟΧΙ» στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Ο διαχειριστής
+   Ο πελάτης πάτησε «ΟΧΙ» στο «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;». Ο διαχειριστής
    κρίνει: «Δεν ήρθε · επιστροφή» δίνει πίσω την κράτηση στο πακέτο,
    «Ήρθε · χρεώνεται» γράφει check-in και την αφήνει χρεωμένη
    (admin_resolve_absence). Μένει εδώ μέχρι να απαντήσει, όσες μέρες κι αν περάσουν.
@@ -1192,7 +1192,7 @@ function AbsenceReports({ flash, onAuthFail }) {
         </div>
       </div>
       <p className="f-text px-4 pt-3 text-[13px] leading-relaxed text-neutral-500">
-        Πάτησαν «ΟΧΙ» στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Εσύ κρίνεις αν όντως δεν ήρθαν.
+        Πάτησαν «ΟΧΙ» στο «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;». Εσύ κρίνεις αν όντως δεν ήρθαν.
         Μέχρι να απαντήσεις η κράτηση μένει χρεωμένη, και η ειδοποίηση μένει εδώ όσες μέρες κι αν περάσουν.
       </p>
       <div className="max-h-[420px] divide-y divide-neutral-200 overflow-y-auto px-4 pb-2">
@@ -2126,7 +2126,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                               )}
                             </div>
                             {DECIDED_LABEL[p.state] ? (
-                              /* Κράτηση που κρίθηκε μετά το «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;»: χωρίς κουμπιά. */
+                              /* Κράτηση που κρίθηκε μετά το «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;»: χωρίς κουμπιά. */
                               <span className="f-display shrink-0 self-start border border-neutral-400 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-neutral-500 sm:self-center">
                                 {DECIDED_LABEL[p.state]}
                               </span>

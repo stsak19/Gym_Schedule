@@ -3302,7 +3302,7 @@ function Collapsible({ title, children }) {
 }
 
 /* Ιστορικό κρατήσεων: οι προπονήσεις με check-in και οι απουσίες
-   (όσες απάντησε ΟΧΙ στο «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;»). Ακυρώσεις και κρατήσεις
+   (όσες απάντησε ΟΧΙ στο «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;»). Ακυρώσεις και κρατήσεις
    που δεν έχουν γίνει ακόμα δεν φαίνονται εδώ. */
 const HISTORY_ABSENT = {
   absent_pending: "Δεν ήρθες · σε αναμονή",
@@ -3632,7 +3632,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     setWorkoutPref(v);
     try { localStorage.setItem(workoutKey, v ? "1" : "0"); } catch (e) { /* ignore */ }
   };
-  /* «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;» — κρατήσεις που περιμένουν απάντηση. */
+  /* «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;» — κρατήσεις που περιμένουν απάντηση. */
   const [prompts, setPrompts] = useState([]);
   const [promptBusy, setPromptBusy] = useState(false);
   /* Μία ερώτηση με το άνοιγμα: έχει δηλώσει στόχους ή όχι. Από αυτό
@@ -3726,7 +3726,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
          το κινητό του, ανοίγει κι αυτή εδώ. Ποιος περνάει το κρίνει η
          σύνδεση, όχι το κλειδί της κάρτας. */
       /* Το check-in δεν γίνεται πια με QR/NFC: γίνεται με την ερώτηση
-         «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Παλιά QR με checkin=1 ανοίγουν απλώς την
+         «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;». Παλιά QR με checkin=1 ανοίγουν απλώς την
          εφαρμογή. Πάτημα σε ειδοποίηση νέου μηνύματος, με την εφαρμογή
          κλειστή, ανοίγει τα Μηνύματα. */
       if (params.get("chat") === "1" && CHAT_ENABLED) setTab("chat");
@@ -4217,7 +4217,7 @@ function CreditsBadge({ credits }) {
   );
 }
 
-/* «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;»
+/* «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;»
    Βγαίνει στο κέντρο της οθόνης λίγα λεπτά μετά την ώρα της κράτησης
    (settings.checkin_prompt_min, 10 λεπτά). Δεν κλείνει χωρίς απάντηση.
    ΝΑΙ κάνει check-in. ΟΧΙ ειδοποιεί τη διαχείριση. */
@@ -4230,7 +4230,7 @@ function CheckinPrompt({ booking, busy, onAnswer }) {
           Προπόνηση {booking.time ? String(booking.time).slice(0, 5) : ""}
         </div>
         <h2 className="f-display mt-3 text-[34px] font-extrabold uppercase leading-[0.95] tracking-tight">
-          ΠΟΥ ΕΙΣ;<br />ΗΡΘΕΣ;
+          ΠΟΥ ΕΙΣΑΙ;<br />ΗΡΘΕΣ;
         </h2>
         <div className="mt-7 grid grid-cols-2 gap-3">
           <Button size="lg" disabled={busy} onClick={() => onAnswer(true)}>ΝΑΙ!</Button>
@@ -4317,7 +4317,7 @@ function OutOfCredits({ credits, hasUpcoming, chatOn, onGo }) {
   );
 }
 
-/* Τι έγινε με την κράτηση μετά το «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Το state το
+/* Τι έγινε με την κράτηση μετά το «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;». Το state το
    στέλνει η my_bookings· αν λείπει (παλιά απάντηση), κρίνουμε από το status. */
 const bookingState = (b) => (b && b.state) || (b && b.status === "checked_in" ? "checked_in" : "booked");
 /* Αποτύπωμα των κρατήσεων: αλλάζει όταν μια κράτηση μπει, φύγει ή αλλάξει
