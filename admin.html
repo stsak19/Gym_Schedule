@@ -2389,17 +2389,21 @@ function HourRow({ slot, scope, onSave }) {
   const closed = slot.capacity === 0;
 
   return (
-    <div className={`flex flex-wrap items-center justify-between gap-3 py-3 ${closed ? "opacity-60" : ""}`}>
+    /* Πλέγμα με σταθερές στήλες: ο αριθμός στέκεται πάντα στην ίδια ευθεία,
+       όσο μακρύ κι αν είναι το κείμενο αριστερά («Κλειστή — …»). */
+    <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${closed ? "opacity-60" : ""}`}>
       <div className="min-w-0">
         <span className="f-mono block text-[17px] leading-none">{slot.slot_time}</span>
-        <span className="f-text text-[12px] text-neutral-400">
+        <span className="f-text mt-1 block text-[12px] leading-snug text-neutral-400">
           {closed ? "Κλειστή — δεν φαίνεται στους πελάτες" : `${slot.taken} κρατήσεις`}
         </span>
       </div>
-      <Stepper value={val} min={scope === "weekday" ? 0 : slot.taken} max={80} onChange={setVal} />
+      <div className="justify-self-end">
+        <Stepper value={val} min={scope === "weekday" ? 0 : slot.taken} max={80} onChange={setVal} />
+      </div>
       {/* Στο κινητό δεν χωράει δίπλα: φαίνεται από κάτω, μόνο όταν αλλάξει κάτι. */}
       <Button size="sm" disabled={!dirty} onClick={() => onSave(slot.slot_time, val)}
-        className={dirty ? "w-full sm:w-auto" : "hidden sm:inline-flex"}>Αποθήκευση</Button>
+        className={dirty ? "col-span-2 w-full sm:col-span-1 sm:w-auto" : "hidden sm:inline-flex"}>Αποθήκευση</Button>
     </div>
   );
 }
