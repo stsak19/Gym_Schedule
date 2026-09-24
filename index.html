@@ -3673,6 +3673,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
      Το πλήρες παράθυρο βγαίνει μόνο όταν δεν του έμεινε καμία ώρα. */
   const outOfCredits = !!credits && credits.remaining <= 0;
   const hasAhead = upcoming.some((b) => bookingState(b) === "booked");
+  const upcomingSig = useMemo(() => bookingsSig(upcoming), [upcoming]);
   /* Χωρίς ενεργή συνδρομή το Πρόγραμμα κλειδώνει πάντα — ακόμα κι αν
      έχει κλεισμένες ώρες από παλιό πακέτο. */
   const noPackage = !!credits && credits.active === false;
@@ -3951,7 +3952,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             onGoalsChange={setHasGoals} workoutOn={workoutOn} setWorkoutOn={setWorkoutOn} />
         ) : (
           <React.Fragment>
-            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} />}
+            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} sig={upcomingSig} />}
             {tab === "mine" && <MyBookings session={session} flash={flash} onMine={reportMine} />}
             {tab === "chat" && chatOn && <ChatTab session={session} flash={flash} onRead={markChatRead} onClosed={chatClosed} />}
           </React.Fragment>
@@ -4319,6 +4320,9 @@ function OutOfCredits({ credits, hasUpcoming, chatOn, onGo }) {
 /* Τι έγινε με την κράτηση μετά το «ΠΟΥ ΕΙΣ; ΗΡΘΕΣ;». Το state το
    στέλνει η my_bookings· αν λείπει (παλιά απάντηση), κρίνουμε από το status. */
 const bookingState = (b) => (b && b.state) || (b && b.status === "checked_in" ? "checked_in" : "booked");
+/* Αποτύπωμα των κρατήσεων: αλλάζει όταν μια κράτηση μπει, φύγει ή αλλάξει
+   κατάσταση (π.χ. ακύρωση από το γυμναστήριο). */
+const bookingsSig = (list) => (list || []).map((b) => b.id + ":" + bookingState(b)).join(",");
 const STATE_LABEL = {
   booked: "Έχεις κράτηση",
   checked_in: "Έκανες check-in",
@@ -4327,7 +4331,7 @@ const STATE_LABEL = {
   forfeit: "Δεν ήρθες",
 };
 
-function BookTab({ session, flash, credits, hasAhead, onMine }) {
+function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
   const [date, setDate] = useState(iso(new Date()));
   const [slots, setSlots] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -4350,14 +4354,22 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
     return Array.from({ length: MAX_DAYS_AHEAD + 1 }, (_, i) => iso(addDays(base, i)));
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /* Τι είδε το Πρόγραμμα την τελευταία φορά που φόρτωσε. Αν ο γενικός
+     έλεγχος (κάθε 30″) φέρει άλλες κρατήσεις — π.χ. ακύρωση από το
+     γυμναστήριο — ξαναφορτώνουμε σιωπηλά, για να αλλάξουν και τα κουμπιά. */
+  const seenSig = React.useRef(null);
+  const load = useCallback(async (quiet) => {
+    if (quiet !== true) setLoading(true);
     const [avail, mine] = await Promise.all([
       sb.rpc("day_availability", { p_date: date }),
       sb.rpc("my_bookings", { p_client_id: session.clientId }),
     ]);
     setLoading(false);
-    if (!mine.error && mine.data) { reportBookings(mine.data.bookings || []); if (onMine) onMine(mine.data); }
+    if (!mine.error && mine.data) {
+      seenSig.current = bookingsSig(mine.data.bookings);
+      reportBookings(mine.data.bookings || []);
+      if (onMine) onMine(mine.data);
+    }
     if (avail.error) { flash("Δεν φορτώθηκε το πρόγραμμα"); return; }
     setSlots(avail.data || []);
 
@@ -4374,6 +4386,9 @@ function BookTab({ session, flash, credits, hasAhead, onMine }) {
   }, [date, flash, session.clientId, onMine]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (seenSig.current !== null && sig !== seenSig.current) load(true);
+  }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const book = async (time) => {
     setBusySlot(time);
