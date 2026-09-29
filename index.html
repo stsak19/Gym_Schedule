@@ -2179,11 +2179,26 @@ function markPushAsked() {
 
 /* Εγγραφή της συσκευής στις push. Την καλούν και το ποπ απ μετά την
    εγγραφή και το κουμπί στις ρυθμίσεις — μία υλοποίηση, όχι δύο. */
-async function subscribePush(clientId) {
+/* Γράφει στη βάση γιατί απέτυχε η ενεργοποίηση, ώστε ο αντμιν να
+   μπορεί να δει τι έγινε χωρίς να θυμάται ο πελάτης το μήνυμα. */
+function logPushFailure(clientId, reason, detail) {
   try {
-    if (!pushSupported()) return { ok: false, error: "unsupported" };
+    sb.rpc("log_push_failure", {
+      p_client_id: clientId, p_reason: reason,
+      p_detail: detail || null, p_user_agent: navigator.userAgent,
+    }).then(() => {}, () => {});
+  } catch (e) { /* ignore */ }
+}
+
+async function subscribePush(clientId) {
+  const fail = (error, detail) => { logPushFailure(clientId, error, detail); return { ok: false, error }; };
+  try {
+    if (!pushSupported()) return fail("unsupported");
+    /* Αν έχει πατήσει «Αποκλεισμός» μία φορά, ο browser δεν ξαναρωτάει
+       ποτέ — απαντάει αμέσως «όχι». Πρέπει να τις ανοίξει ο ίδιος. */
+    if (Notification.permission === "denied") return fail("blocked");
     const perm = await Notification.requestPermission();
-    if (perm !== "granted") return { ok: false, error: "denied" };
+    if (perm !== "granted") return fail(perm === "denied" ? "blocked" : "denied");
 
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.subscribe({
@@ -2198,11 +2213,19 @@ async function subscribePush(clientId) {
       p_p256dh: json.keys.p256dh,
       p_auth: json.keys.auth,
     });
-    if (error || !data?.ok) return { ok: false, error: "save" };
+    if (error || !data?.ok) return fail("save", error?.message || data?.error);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: "failed" };
+    return fail("failed", ((e && e.name) || "") + ": " + ((e && e.message) || String(e)));
   }
+}
+
+/* Κείμενο που εξηγεί στον πελάτη τι να κάνει, ανά αιτία αποτυχίας. */
+function pushFailText(error) {
+  if (error === "blocked") return "Οι ειδοποιήσεις είναι μπλοκαρισμένες σε αυτό το κινητό. Άνοιξέ τες: κράτα πατημένο το εικονίδιο της εφαρμογής → Πληροφορίες εφαρμογής → Ειδοποιήσεις → Να επιτρέπονται. Αν την ανοίγεις από τον Chrome: ⋮ → Ρυθμίσεις → Ρυθμίσεις ιστότοπου → Ειδοποιήσεις. Μετά ξαναπάτα το κουμπί.";
+  if (error === "denied") return "Δεν δόθηκε άδεια. Πάτα ξανά το κουμπί και διάλεξε «Να επιτρέπεται».";
+  if (error === "save") return "Δεν αποθηκεύτηκε στον διακομιστή. Δοκίμασε ξανά σε λίγο.";
+  return "Αυτό το κινητό ή ο browser δεν δέχεται ειδοποιήσεις. Άνοιξε την εφαρμογή από τον Google Chrome (όχι μέσα από Viber, Messenger ή Instagram) και ξαναπάτα το κουμπί.";
 }
 
 /* Ξεγράψιμο της συσκευής. Το χρειαζόμαστε και όταν διαγραφεί ο
@@ -2880,7 +2903,7 @@ function PushPrompt({ session, onClose, flash }) {
     markPushAsked();
     if (r.ok) flash("Οι ειδοποιήσεις ενεργοποιήθηκαν");
     else if (r.error === "denied") flash("Δεν δόθηκε άδεια — μπορείς να το κάνεις αργότερα");
-    else flash("Κάτι πήγε στραβά, δοκίμασε από τις ρυθμίσεις");
+    else flash("Δεν ενεργοποιήθηκαν — δες τι να κάνεις στις Ρυθμίσεις");
     onClose();
   };
 
@@ -4755,6 +4778,7 @@ function MyBookings({ session, flash, onMine }) {
 function PushPanel({ session, flash }) {
   const [mode, setMode] = useState("checking"); // checking | unsupported | needs-install | off | on
   const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -4801,10 +4825,11 @@ function PushPanel({ session, flash }) {
     setBusy(false);
     markPushAsked();
     if (!r.ok) {
-      flash(r.error === "denied" ? "Δεν δόθηκε άδεια"
-        : r.error === "save" ? "Δεν αποθηκεύτηκε" : "Κάτι πήγε στραβά");
+      /* Μένει γραμμένο κάτω από το κουμπί — όχι toast που σβήνει. */
+      setHint(pushFailText(r.error));
       return;
     }
+    setHint("");
     setMode("on");
     flash("Οι ειδοποιήσεις ενεργοποιήθηκαν");
   };
@@ -4835,6 +4860,11 @@ function PushPanel({ session, flash }) {
         <Button className="mt-4 w-full" disabled={busy || mode === "on"} onClick={enable}>
           {busy ? "…" : "Ενεργοποίηση ειδοποιήσεων"}
         </Button>
+      )}
+      {hint && mode === "off" && (
+        <p className="f-text mt-3 border-l-2 border-red-600 pl-3 text-[13px] leading-relaxed text-red-700">
+          {hint}
+        </p>
       )}
     </div>
   );
