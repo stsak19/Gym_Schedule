@@ -1989,9 +1989,59 @@ body:not(.mode-workout) #workout-app { display: none; }
 
 /* Το κουμπί του κεραυνού στην κεφαλίδα των κρατήσεων. */
 .bolt-btn { -webkit-tap-highlight-color: transparent; }
+
+/* Η εφαρμογή είναι μόνο όρθια. Το manifest το κλειδώνει στο Android
+   όταν είναι εγκατεστημένη· το iPhone και ο απλός browser το
+   αγνοούν. Εκεί, όταν γυρίσει πλάγια το κινητό, καλύπτουμε την οθόνη
+   και ζητάμε να το ξαναγυρίσει. Η κλάση μπαίνει από το script πιο
+   κάτω, με βάση τη θέση της συσκευής και όχι το σχήμα του παραθύρου,
+   για να μη βγαίνει όταν ανοίγει το πληκτρολόγιο. */
+#rotate-lock { display: none; }
+html.is-landscape-phone #rotate-lock {
+  display: flex; position: fixed; inset: 0; z-index: 2147483647;
+  flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  background: #000; color: #fff; text-align: center; padding: 24px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+html.is-landscape-phone, html.is-landscape-phone body { overflow: hidden; }
+#rotate-lock svg { width: 56px; height: 56px; animation: rotate-hint 1.6s ease-in-out infinite; }
+#rotate-lock b { font-size: 18px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#rotate-lock span { font-size: 14px; color: #aaa; }
+@keyframes rotate-hint { 0%, 30% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0deg); } }
 </style>
 </head>
 <body>
+<div id="rotate-lock" aria-live="polite">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="6" y="2" width="12" height="20" rx="2.5"/><line x1="11" y1="18.5" x2="13" y2="18.5"/>
+  </svg>
+  <b>Γύρισε το κινητό όρθια</b>
+  <span>Η εφαρμογή δουλεύει μόνο κάθετα</span>
+</div>
+<script>
+(function () {
+  var root = document.documentElement;
+  /* Μόνο κινητά: η μικρή πλευρά της οθόνης κάτω από 600px και οθόνη αφής.
+     Τάμπλετ και υπολογιστές μένουν ελεύθερα. */
+  function isPhone() {
+    var s = Math.min(screen.width, screen.height);
+    var touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    return touch && s < 600;
+  }
+  function isLandscape() {
+    if (screen.orientation && screen.orientation.type) return screen.orientation.type.indexOf("landscape") === 0;
+    if (typeof window.orientation === "number") return Math.abs(window.orientation) === 90;
+    return window.innerWidth > window.innerHeight;
+  }
+  function update() { root.classList.toggle("is-landscape-phone", isPhone() && isLandscape()); }
+  update();
+  if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener("change", update);
+  window.addEventListener("orientationchange", function () { setTimeout(update, 50); });
+  window.addEventListener("resize", update);
+  /* Στο Android, όπου επιτρέπεται, κλειδώνουμε και κανονικά. */
+  try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("portrait").catch(function () {}); } catch (e) {}
+})();
+</script>
 <div id="root"><div id="boot-status" style="font-family:system-ui,sans-serif;padding:24px;color:#666;font-size:14px;">Φόρτωση…</div></div>
 
 
