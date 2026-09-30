@@ -112,6 +112,12 @@ html, body { margin: 0; background: #fff; }
 [data-theme="dark"] button.border.bg-white { background-color: #1E1E1E !important; border-color: #4A4A4A !important; }
 [data-theme="dark"] button.border.bg-white:active { background-color: #F2F2F2 !important; }
 
+/* Στρογγυλεμένες γωνίες σε όλη την εφαρμογή κρατήσεων: κουμπιά,
+   κάρτες, πεδία, παράθυρα. Ό,τι έχει δική του κλάση rounded-* (π.χ.
+   ο διακόπτης, τα μικρά τετραγωνάκια) κρατάει τη δική του, γιατί το
+   Tailwind φορτώνει μετά από εδώ. */
+:where(.gym-root) .border { border-radius: 12px; }
+
 /* Διαγραφή λογαριασμού. Το μόνο κόκκινο της εφαρμογής — μπαίνει με
    δικό του κανόνα ώστε να μην παλεύει με τα utility classes. */
 #root .link-danger { color: #C81E1E !important; }
@@ -2578,14 +2584,14 @@ function SeatMeter({ taken, cap, size = "md" }) {
     return (
       <div className="flex flex-wrap gap-[3px]">
         {Array.from({ length: cap }).map((_, i) => (
-          <div key={i} className={`${dim} border border-black ${i < taken ? "bg-black" : "bg-white"}`} />
+          <div key={i} className={`${dim} rounded-[3px] border border-black ${i < taken ? "bg-black" : "bg-white"}`} />
         ))}
       </div>
     );
   }
   const pct = cap ? Math.min(100, (taken / cap) * 100) : 0;
   return (
-    <div className="relative h-[14px] w-full border border-black bg-white">
+    <div className="relative h-[14px] w-full overflow-hidden rounded-full border border-black bg-white">
       <div className="absolute inset-y-0 left-0 bg-black transition-[width] duration-300" style={{ width: `${pct}%` }} />
     </div>
   );
@@ -3125,7 +3131,7 @@ function SignIn({ onLogin, flash }) {
 
             <button role="checkbox" aria-checked={remember} onClick={() => setRemember(!remember)}
               className="mt-3 flex w-full items-center gap-3 py-1 text-left">
-              <span className={`flex h-5 w-5 shrink-0 items-center justify-center border border-black ${remember ? "bg-black" : "bg-white"}`}>
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border border-black ${remember ? "bg-black" : "bg-white"}`}>
                 {remember && <span className="f-display text-[13px] font-bold leading-none text-white">✓</span>}
               </span>
               <span className="f-text text-[14px] text-neutral-700">Να με θυμάσαι σε αυτή τη συσκευή</span>
@@ -3174,7 +3180,7 @@ function SignIn({ onLogin, flash }) {
 
             <button onClick={() => { setMarketing(!marketing); setErr(""); }}
               className="mt-3 flex w-full items-start gap-3 border border-black p-3 text-left">
-              <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center border border-black ${marketing ? "bg-black" : "bg-white"}`}>
+              <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border border-black ${marketing ? "bg-black" : "bg-white"}`}>
                 {marketing && <span className="f-display text-[13px] font-bold leading-none text-white">✓</span>}
               </span>
               <span className="f-text text-[13px] leading-snug text-neutral-700">
@@ -3294,7 +3300,7 @@ function SettingsTab({ session, flash, theme, setTheme, onLogout, onAccountDelet
 
       <div className="mt-6 border border-black p-4">
         <div className="f-display text-[14px] font-bold uppercase tracking-wide">Εμφάνιση</div>
-        <div className="mt-3 flex border border-black">
+        <div className="mt-3 flex overflow-hidden border border-black">
           {[["light", "Φωτεινό"], ["dark", "Σκούρο"], ["auto", "Αυτόματο"]].map(([k, label], i) => (
             <button key={k} onClick={() => setTheme(k)}
               className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
@@ -3628,7 +3634,7 @@ function AccountBody({ session, flash, onDeleted }) {
 
           <button onClick={() => { setMarketing(!marketing); setDirty(true); }}
             className="mt-3 flex w-full items-start gap-3 text-left">
-            <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center border border-black ${
+            <span className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border border-black ${
               marketing ? "bg-black" : "bg-white"}`}>
               {marketing && <span className="f-display text-[13px] font-bold leading-none text-white">✓</span>}
             </span>
@@ -3714,6 +3720,12 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   /* «ΠΟΥ ΕΙΣΑΙ; ΗΡΘΕΣ;» — κρατήσεις που περιμένουν απάντηση. */
   const [prompts, setPrompts] = useState([]);
   const [promptBusy, setPromptBusy] = useState(false);
+  /* Το popup «Μισή ώρα προπόνηση» με τις σερπαντίνες. */
+  const [motivation, setMotivation] = useState(null);
+  const closeMotivation = () => {
+    if (motivation) markMotivationSeen(motivation.id);
+    setMotivation(null);
+  };
   /* Μία ερώτηση με το άνοιγμα: έχει δηλώσει στόχους ή όχι. Από αυτό
      κρίνεται αν φαίνεται ο κεραυνός. */
   useEffect(() => {
@@ -3850,15 +3862,20 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
        μέσα στην εφαρμογή. */
     if (!who.error && who.data && who.data.approved === false) { onAccountGone("pending"); return; }
 
-    const [n, mine, unread, open, ask] = await Promise.all([
+    const [n, mine, unread, open, ask, mot] = await Promise.all([
       sb.rpc("my_notifications", { p_client_id: session.clientId }),
       sb.rpc("my_bookings", { p_client_id: session.clientId }),
       sb.rpc("my_chat_unread", { p_client_id: session.clientId }),
       sb.rpc("chat_is_open", {}),
       sb.rpc("my_checkin_prompts", { p_client_id: session.clientId }),
+      sb.rpc("my_motivation", { p_client_id: session.clientId }),
     ]);
     if (!n.error && n.data) { setNotifs(n.data); reportNotifications(n.data); }
     if (!ask.error && Array.isArray(ask.data)) setPrompts(ask.data);
+    /* Μήνυμα κινήτρου της προπόνησης που τρέχει. Βγαίνει μία φορά. */
+    if (!mot.error && mot.data && mot.data.id && !motivationSeen(mot.data.id)) {
+      setMotivation((cur) => (cur && cur.id === mot.data.id ? cur : mot.data));
+    }
     if (!mine.error && mine.data) { reportBookings(mine.data.bookings || []); reportMine(mine.data); }
 
     /* Ανοιχτά ή κλειστά μηνύματα. Αν η απάντηση χαθεί, μένει ό,τι ξέραμε. */
@@ -4070,6 +4087,10 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
 
       {prompts.length > 0 && (
         <CheckinPrompt booking={prompts[0]} busy={promptBusy} onAnswer={answerPrompt} />
+      )}
+
+      {motivation && prompts.length === 0 && (
+        <MotivationPopup item={motivation} onClose={closeMotivation} />
       )}
     </div>
   );
@@ -4320,6 +4341,126 @@ function ChoiceDialog({ title, text, options, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ============================================================
+   «Μισή ώρα προπόνηση»
+   Το μήνυμα κινήτρου το φτιάχνει η βάση 30' μετά την ώρα της
+   κράτησης, για όσους πάτησαν ΝΑΙ (enqueue_reminders). Στο κινητό
+   έρχεται ως push· μέσα στην εφαρμογή βγαίνει εδώ, στο κέντρο, με
+   κομφετί και σερπαντίνες, μία φορά ανά προπόνηση.
+   ============================================================ */
+const MOTIVATION_SEEN_KEY = "kinesis_motivation_seen";
+function motivationSeen(id) {
+  try { return JSON.parse(localStorage.getItem(MOTIVATION_SEEN_KEY) || "[]").includes(id); }
+  catch (e) { return false; }
+}
+function markMotivationSeen(id) {
+  try {
+    const list = JSON.parse(localStorage.getItem(MOTIVATION_SEEN_KEY) || "[]");
+    if (!list.includes(id)) list.push(id);
+    localStorage.setItem(MOTIVATION_SEEN_KEY, JSON.stringify(list.slice(-30)));
+  } catch (e) { /* ignore */ }
+}
+
+const CONFETTI_COLORS = ["#E24B4A", "#EF9F27", "#378ADD", "#1D9E75", "#D4537E", "#7F77DD", "#FAC775"];
+
+function MotivationPopup({ item, onClose }) {
+  const canvasRef = React.useRef(null);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    /* Με το που ανοίγει, μετράει ως «το είδε» — ακόμα κι αν κλείσει
+       την εφαρμογή χωρίς να πατήσει το κουμπί. */
+    markMotivationSeen(item.id);
+    const raf0 = requestAnimationFrame(() => setShown(true));
+
+    const cv = canvasRef.current;
+    let raf = 0;
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!cv || reduce) return () => cancelAnimationFrame(raf0);
+
+    const ctx = cv.getContext("2d");
+    const d = window.devicePixelRatio || 1;
+    const W = window.innerWidth, H = window.innerHeight;
+    cv.width = W * d; cv.height = H * d;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    const col = () => CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+
+    /* Κομφετί από τις δύο κάτω γωνίες, σερπαντίνες από πάνω. */
+    const parts = [];
+    for (const side of [0, 1]) {
+      for (let i = 0; i < 70; i++) {
+        parts.push({
+          x: side ? W : 0, y: H * 0.85,
+          vx: (side ? -1 : 1) * (2 + Math.random() * 6),
+          vy: -(8 + Math.random() * 8),
+          w: 7 + Math.random() * 5, h: 4 + Math.random() * 3,
+          r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3, c: col(),
+        });
+      }
+    }
+    const streams = [];
+    for (let i = 0; i < 18; i++) {
+      streams.push({
+        x: Math.random() * W, y: -Math.random() * H * 0.6,
+        vy: 1.8 + Math.random() * 2.2, ph: Math.random() * 6,
+        len: 12 + Math.floor(Math.random() * 10), c: col(),
+      });
+    }
+
+    const start = performance.now();
+    const tick = (t) => {
+      const el = t - start;
+      ctx.clearRect(0, 0, W, H);
+      const a = el > 3200 ? Math.max(0, 1 - (el - 3200) / 900) : 1;
+      ctx.globalAlpha = a;
+      for (const p of parts) {
+        p.vy += 0.28; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
+        ctx.fillStyle = p.c;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r * 2)) + 1);
+        ctx.restore();
+      }
+      ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      for (const s of streams) {
+        s.y += s.vy; s.ph += 0.08;
+        ctx.beginPath();
+        for (let i = 0; i < s.len; i++) {
+          const px = s.x + Math.sin(s.ph + i * 0.7) * 10, py = s.y - i * 8;
+          if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+        }
+        ctx.strokeStyle = s.c; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      if (a > 0) raf = requestAnimationFrame(tick);
+      else ctx.clearRect(0, 0, W, H);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf0); cancelAnimationFrame(raf); };
+  }, [item.id]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+        style={{ background: "rgba(0,0,0,0.6)", opacity: shown ? 1 : 0, transition: "opacity .3s" }}
+        role="dialog" aria-modal="true" onClick={onClose}>
+        <div className="w-full max-w-sm border border-black bg-white p-6 text-center"
+          style={{ transform: shown ? "scale(1)" : "scale(.85)", transition: "transform .35s cubic-bezier(.2,1.4,.4,1)" }}
+          onClick={(e) => e.stopPropagation()}>
+          <div className="f-display text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-400">
+            {item.title || "Μισή ώρα προπόνηση"}
+          </div>
+          <h2 className="f-display mt-3 text-[26px] font-extrabold leading-[1.1] tracking-tight">
+            {item.body}
+          </h2>
+          <Button size="lg" className="mt-7 w-full" onClick={onClose}>ΠΑΜΕ!</Button>
+        </div>
+      </div>
+      <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 z-[61]"
+        style={{ width: "100vw", height: "100vh" }} aria-hidden="true" />
+    </>
   );
 }
 
