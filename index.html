@@ -2284,6 +2284,50 @@ function pushFailText(error) {
   return "Αυτό το κινητό ή ο browser δεν δέχεται ειδοποιήσεις. Άνοιξε την εφαρμογή από τον Google Chrome (όχι μέσα από Viber, Messenger ή Instagram) και ξαναπάτα το κουμπί.";
 }
 
+/* Ξαναγράφει σιωπηλά τη συσκευή στη βάση σε κάθε άνοιγμα της εφαρμογής.
+   Η συνδρομή ζει στο κινητό, αλλά η γραμμή της στη βάση μπορεί να σβηστεί
+   (π.χ. όταν η Apple απαντήσει λάθος σε μια αποστολή). Τότε το κινητό
+   νομίζει ότι είναι γραμμένο και δεν παίρνει τίποτα. Πριν ξαναγραφόταν
+   μόνο όταν ο πελάτης άνοιγε τις Ρυθμίσεις — τώρα σε κάθε άνοιγμα.
+   Δεν ρωτάει ποτέ άδεια: δουλεύει μόνο αν την έχει ήδη δώσει. */
+let lastPushRefresh = 0;
+async function refreshPushRegistration(clientId) {
+  try {
+    if (!clientId || !pushSupported()) return;
+    if (isIOS() && !isStandalone()) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const now = Date.now();
+    if (now - lastPushRefresh < 5 * 60 * 1000) return;
+    lastPushRefresh = now;
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && !matchesVapid(sub)) {
+      try { await sb.rpc("delete_push_subscription", { p_endpoint: sub.endpoint }); } catch (e) { /* ignore */ }
+      try { await sub.unsubscribe(); } catch (e) { /* ignore */ }
+      sub = null;
+    }
+    if (!sub) {
+      /* Η άδεια υπάρχει αλλά η συνδρομή χάθηκε από το κινητό. Δοκιμάζουμε
+         να την ξαναφτιάξουμε· αν ο browser θέλει πάτημα κουμπιού, απλώς
+         αποτυγχάνει και μένει το κουμπί στις Ρυθμίσεις. */
+      try {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      } catch (e) { return; }
+    }
+    const json = sub.toJSON();
+    await sb.rpc("save_push_subscription", {
+      p_client_id: clientId,
+      p_endpoint: sub.endpoint,
+      p_p256dh: json.keys.p256dh,
+      p_auth: json.keys.auth,
+    });
+  } catch (e) { /* ignore */ }
+}
+
 /* Ξεγράψιμο της συσκευής. Το χρειαζόμαστε και όταν διαγραφεί ο
    λογαριασμός, για να μη μείνει ζωντανή συνδρομή σε κινητό που δεν
    έχει πια λογαριασμό. */
@@ -2710,6 +2754,18 @@ function App() {
     }
     setReady(true);
   }, []);
+
+  /* Σε κάθε άνοιγμα (και κάθε φορά που η εφαρμογή ξαναέρχεται μπροστά)
+     ξαναγράφεται η συσκευή για push, χωρίς να χρειαστεί να μπει ο πελάτης
+     στις Ρυθμίσεις. */
+  useEffect(() => {
+    const id = session && session.clientId;
+    if (!id) return;
+    refreshPushRegistration(id);
+    const onVis = () => { if (document.visibilityState === "visible") refreshPushRegistration(id); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [session && session.clientId]);
 
   /* Οι θυμημένες κρατήσεις ανήκουν σε έναν λογαριασμό. Σε αλλαγή
      λογαριασμού καθαρίζουν, αλλιώς ο επόμενος πελάτης θα έβλεπε
