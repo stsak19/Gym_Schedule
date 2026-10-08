@@ -93,6 +93,12 @@ body { -webkit-tap-highlight-color: transparent; }
 .renewal-info.renewal-info, .renewal-info.renewal-info * { color: #0C0C0C !important; }
 .renewal-info.renewal-info .text-neutral-500 { color: #4A4A4A !important; }
 .renewal-tag.renewal-tag.renewal-tag { color: #0C0C0C !important; border-color: #0C0C0C !important; background-color: #FFE600 !important; }
+/* Εκδήλωση ενδιαφέροντος: μπλε πλαίσιο/ετικέτα, ίδιο και στα δύο θέματα. */
+.interest-row.interest-row.interest-row { background-color: #DCE9FF !important; border-color: #2563EB !important; }
+.interest-info.interest-info, .interest-info.interest-info * { color: #0B2A6B !important; }
+.interest-info.interest-info .text-neutral-500 { color: #36518A !important; }
+.interest-tag.interest-tag.interest-tag { color: #FFFFFF !important; border-color: #1D4ED8 !important; background-color: #2563EB !important; }
+.interest-count.interest-count { color: #2563EB !important; }
 @media (hover: hover) and (pointer: fine) {
 [data-theme="dark"] .hover\:bg-neutral-50:hover { background-color: #161616 !important; }
 }
@@ -2090,6 +2096,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
             const expanded = open === s.slot_time;
             /* Πελάτες που έρχονται για ανανέωση συνδρομής σε αυτή την ώρα. */
             const renewals = people.filter((p) => p.renewal && !DECIDED_LABEL[p.state]).length;
+            /* Όσοι πάτησαν «Δήλωση ενδιαφέροντος» γιατί η ώρα ήταν γεμάτη.
+               Δεν πιάνουν θέση· μπαίνουν μόνοι τους αν ακυρώσει κάποιος. */
+            const waiting = (s.waiting || []).map((w) => (typeof w === "string" ? { name: w } : w));
             const opensAt = s.checkin_opens_at ? new Date(s.checkin_opens_at) : null;
             const tooEarly = !!opensAt && nowMs < opensAt.getTime();
             const opensLabel = opensAt ? `${pad2(opensAt.getHours())}:${pad2(opensAt.getMinutes())}` : "";
@@ -2098,7 +2107,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                 <button onClick={() => toggleSlot(s.slot_time)}
                   className="w-full px-5 py-4 text-left hover:bg-neutral-50 sm:px-6">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="flex items-center gap-2">
+                    <span className="flex flex-wrap items-center gap-2">
                       <span className="f-mono text-[20px] leading-none tracking-tight">{s.slot_time}</span>
                       {fresh.byKey.has(date + " " + s.slot_time) && <Dot />}
                       {renewals > 0 && (
@@ -2106,9 +2115,17 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                           Ανανέωση{renewals > 1 ? ` ×${renewals}` : ""}
                         </span>
                       )}
+                      {waiting.length > 0 && (
+                        <span className="interest-tag f-display border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                          Εκδήλωση ενδιαφέροντος{waiting.length > 1 ? ` ×${waiting.length}` : ""}
+                        </span>
+                      )}
                     </span>
                     <div className="flex items-center gap-4">
-                      <span className="f-mono text-[13px] text-neutral-600">{taken}/{s.capacity}</span>
+                      <span className="f-mono shrink-0 text-[13px] text-neutral-600">
+                        {taken}/{s.capacity}
+                        {waiting.length > 0 && <span className="interest-count font-bold"> +{waiting.length}</span>}
+                      </span>
                       <span className="f-text text-[13px] text-neutral-500">{present} παρόντες</span>
                       <span className="f-display text-neutral-400">{expanded ? "−" : "+"}</span>
                     </div>
@@ -2142,6 +2159,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                                 )}
                               </div>
                               <div className="f-mono text-[12px] text-neutral-500">{p.phone}</div>
+                              {p.backup_for && (
+                                <div className="f-text text-[12px] text-neutral-500">Εφεδρική — έχει δηλώσει ενδιαφέρον για τις {p.backup_for}</div>
+                              )}
                               {p.status !== "checked_in" && tooEarly && (
                                 <div className="f-text text-[12px] text-neutral-500">Check-in από τις {opensLabel}</div>
                               )}
@@ -2165,9 +2185,29 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
                         ))}
                       </div>
                     )}
-                    {(s.waiting || []).length > 0 && (
-                      <div className="f-text mt-3 border-t border-neutral-300 pt-3 text-[13px] text-neutral-500">
-                        Δήλωσαν ενδιαφέρον: {s.waiting.join(", ")}
+                    {waiting.length > 0 && (
+                      <div className="mt-3">
+                        {waiting.map((w, i) => (
+                          <div key={w.waitlist_id || i}
+                            className="interest-row -mx-5 mt-2 border-2 px-5 py-3 sm:-mx-6 sm:px-6">
+                            <div className="interest-info min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {w.client_id
+                                  ? <ClientNameLink id={w.client_id} name={w.name} onOpen={onOpenClient} />
+                                  : <span className="f-text text-[15px]">{w.name}</span>}
+                                <span className="interest-tag f-display shrink-0 border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                                  εκδηλωση ενδιαφεροντος
+                                </span>
+                              </div>
+                              {w.phone && <div className="f-mono text-[12px] text-neutral-500">{w.phone}</div>}
+                              <div className="f-text text-[12px] text-neutral-500">
+                                {waiting.length > 1 ? `${i + 1}ος στη σειρά · ` : ""}
+                                Αν ακυρώσει κάποιος, κλείνεται αυτόματα εδώ.
+                                {w.backup_time ? ` Εφεδρική κράτηση: ${w.backup_time}.` : ""}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
 
