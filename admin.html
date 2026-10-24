@@ -3237,6 +3237,37 @@ function CreditsPanel({ client, flash, onAuthFail, onUpdated }) {
   );
 }
 
+/* Ιστορικό πελάτη με διαχωριστικό σε κάθε ανανέωση πακέτου.
+   Οι κρατήσεις έρχονται από τη νεότερη στην παλιότερη, η καθεμιά με το
+   πακέτο (cycle) που χρέωσε. Οι ακυρωμένες δεν έχουν πακέτο — παίρνουν
+   το πακέτο της αμέσως παλιότερης κράτησης (ή της νεότερης, αν δεν υπάρχει).
+   Όπου αλλάζει πακέτο μπαίνει κίτρινη γραμμή με την ημερομηνία της ανανέωσης. */
+function historyWithBreaks(history, renewals) {
+  const cyc = history.map((h) => (h.cycle == null ? null : Number(h.cycle)));
+  const filled = cyc.map((c, i) => {
+    if (c != null) return c;
+    for (let j = i + 1; j < cyc.length; j++) if (cyc[j] != null) return cyc[j];
+    for (let j = i - 1; j >= 0; j--) if (cyc[j] != null) return cyc[j];
+    return null;
+  });
+  const ren = (renewals || []).map((r) => ({ t: new Date(r.at).getTime(), total: r.total }))
+    .filter((r) => !isNaN(r.t));
+  const out = [];
+  history.forEach((h, i) => {
+    const breakAfter = i < history.length - 1 && filled[i] != null && filled[i + 1] != null
+      && filled[i] !== filled[i + 1];
+    out.push({ ...h, lastInGroup: breakAfter || i === history.length - 1 });
+    if (!breakAfter) return;
+    /* Η ανανέωση έγινε μετά την παλιά κράτηση και ως μία μέρα μετά την καινούρια
+       (η προπόνηση ανανέωσης συνήθως προηγείται της ανανέωσης στη γραμματεία). */
+    const newer = new Date(h.at).getTime();
+    const older = new Date(history[i + 1].at).getTime();
+    const hit = ren.filter((r) => (isNaN(older) || r.t > older) && (isNaN(newer) || r.t <= newer + 86400000)).pop();
+    out.push({ renewBreak: true, when: hit ? athensParts(hit.t).date : "", total: hit ? hit.total : null });
+  });
+  return out;
+}
+
 /* Κενή φόρμα νέου πελάτη. Ίδια πεδία με την εγγραφή στην εφαρμογή. */
 const NEW_CLIENT = { first_name: "", last_name: "", phone: "", email: "", pin: "", marketing: false };
 
@@ -3246,6 +3277,7 @@ function People({ flash, onAuthFail, refreshKey, openId, onOpened }) {
   const [loading, setLoading] = useState(true);
   const [sel, setSel] = useState(null);
   const [history, setHistory] = useState(null);
+  const [renewals, setRenewals] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
@@ -3281,12 +3313,16 @@ function People({ flash, onAuthFail, refreshKey, openId, onOpened }) {
 
   const openClient = async (row) => {
     setCreated(null);
-    setSel(row); setHistory(null); setConfirmDelete(false);
+    setSel(row); setHistory(null); setRenewals([]); setConfirmDelete(false);
     setPinOpen(false); setPinValue(""); setNewPin("");
     setEditOpen(false);
-    const { data, error } = await rpc("admin_client_history", { p_client_id: row.id });
-    if (error === "AUTH") { onAuthFail(); return; }
-    setHistory(data || []);
+    const [hist, ren] = await Promise.all([
+      rpc("admin_client_history", { p_client_id: row.id }),
+      rpc("admin_client_renewals", { p_client_id: row.id }),
+    ]);
+    if (hist.error === "AUTH" || ren.error === "AUTH") { onAuthFail(); return; }
+    setRenewals(ren.error ? [] : (ren.data || []));
+    setHistory(hist.data || []);
   };
 
   /* Ήρθαμε από το Πρόγραμμα με πάτημα σε όνομα: ανοίγει κατευθείαν η καρτέλα. */
@@ -3502,9 +3538,22 @@ function People({ flash, onAuthFail, refreshKey, openId, onOpened }) {
         ) : history.length === 0 ? (
           <div className="f-text py-6 text-[14px] text-neutral-400">Καμία κράτηση ακόμα.</div>
         ) : (
-          <div className="mt-3 divide-y divide-neutral-200 border-t-2 border-black">
-            {history.map((h, i) => (
-              <div key={i} className="flex items-center justify-between py-3 text-[14px]">
+          <div className="mt-3 border-t-2 border-black">
+            {historyWithBreaks(history, renewals).map((h, i) => h.renewBreak ? (
+              /* Εδώ ξεκίνησε νέο πακέτο: από κάτω το παλιό, από πάνω το καινούριο. */
+              <div key={"r" + i} className="renewal-info -mx-5 my-2 flex items-center justify-between gap-3 border-y-2 border-black bg-[#FFE600] px-5 py-2 sm:-mx-6 sm:px-6">
+                <span className="f-display text-[12px] font-bold uppercase tracking-wide text-black">
+                  🔄 Ανανέωση{h.when ? ` · ${h.when}` : ""}
+                </span>
+                {h.total != null && (
+                  <span className="f-mono shrink-0 text-[12px] font-bold text-black">
+                    {h.total} {h.total === 1 ? "προπόνηση" : "προπονήσεις"}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div key={i} className={`flex items-center justify-between py-3 text-[14px] ${
+                h.lastInGroup ? "" : "border-b border-neutral-200"}`}>
                 <span className="f-mono text-neutral-700">{fmtDay(h.date)} · {h.time}</span>
                 <span className="f-text text-neutral-400">{label[h.status] || h.status}</span>
               </div>
