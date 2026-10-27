@@ -2131,6 +2131,7 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
         <KpiMini label="Ακυρώσεις" value={data?.cancelled ?? 0} onClick={() => openDetail("cancelled")} />
         <KpiMini label="Πληρότητα" value={`${fill}%`} onClick={() => openDetail("fill")} />
       </div>
+      <h3 className="f-display px-5 pb-2.5 text-[13px] font-bold uppercase tracking-wide text-neutral-500 sm:px-6">Οι ώρες της ημέρας</h3>
       </div>
 
       {d && (
@@ -2167,7 +2168,6 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
         </div>
       )}
 
-      <h3 className="f-display mt-9 px-5 text-[14px] sm:px-6 font-bold uppercase tracking-wide text-neutral-500">Οι ώρες της ημέρας</h3>
 
       {loading ? (
         <div className="f-text px-5 py-10 text-[14px] text-neutral-400 sm:px-6">Φόρτωση…</div>
