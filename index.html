@@ -4263,7 +4263,16 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
   const holTester = isHolidayTester(session.clientId);
   const [holTest, setHolTest] = useState(-1);
   const holStops = useMemo(() => (holTester && window.PB3Holiday ? window.PB3Holiday.testStops(new Date().getFullYear()) : []), [holTester]);
-  const hol = useMemo(() => holidayState(holTester && holTest >= 0 ? holStops[holTest].date : new Date()), [holTester, holTest, holStops]);
+  const [viewDate, setViewDate] = useState(null);
+  const todayKey = iso(new Date());
+  const holToday = useMemo(() => holidayState(holTester && holTest >= 0 ? holStops[holTest].date : parseISO(todayKey)), [holTester, holTest, holStops, todayKey]);
+  /* Στο Πρόγραμμα η θεματική ακολουθεί τη μέρα που έχει επιλέξει ο πελάτης,
+     ώστε να βλέπει από πριν και τις επόμενες γιορτές. Αλλού, τη σημερινή. */
+  const hol = useMemo(() => {
+    if (holTester && holTest >= 0) return holToday;
+    if (tab === "book" && !settingsOpen && viewDate) return holidayState(parseISO(viewDate));
+    return holToday;
+  }, [holTester, holTest, holToday, tab, settingsOpen, viewDate]);
   const [holGreet, setHolGreet] = useState(false);
   useEffect(() => {
     const r = document.documentElement;
@@ -4272,13 +4281,13 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     return () => { delete r.dataset.hol; r.style.removeProperty("--hol"); };
   }, [hol]);
   useEffect(() => {
-    if (!hol || !hol.h) { setHolGreet(false); return; }
+    if (!holToday || !holToday.h) { setHolGreet(false); return; }
     if (holTest >= 0) { setHolGreet(true); return; }
-    const key = "pb3_hol_seen_" + hol.day;
+    const key = "pb3_hol_seen_" + holToday.day;
     let seen = false;
     try { seen = localStorage.getItem(key) === "1"; } catch (e) { /* αγνόησε */ }
     if (!seen) { setHolGreet(true); try { localStorage.setItem(key, "1"); } catch (e) { /* αγνόησε */ } }
-  }, [hol, holTest]);
+  }, [holToday, holTest]);
 
   return (
     <div className={`mx-auto flex h-full max-w-md flex-col overflow-hidden${hol ? " gym-hol" : ""}`}>
@@ -4369,7 +4378,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             onGoalsChange={setHasGoals} workoutOn={workoutOn} setWorkoutOn={setWorkoutOn} />
         ) : (
           <React.Fragment>
-            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} sig={upcomingSig} hol={hol} />}
+            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} sig={upcomingSig} hol={hol} onDate={setViewDate} />}
             {tab === "mine" && <MyBookings session={session} flash={flash} onMine={reportMine} />}
             {tab === "chat" && chatOn && <ChatTab session={session} flash={flash} onRead={markChatRead} onClosed={chatClosed} />}
           </React.Fragment>
@@ -4418,7 +4427,7 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
 
       {hol && <HolidayParticles hol={hol} />}
 
-      {hol && hol.h && holGreet && <HolidayGreet hol={hol} onClose={() => setHolGreet(false)} />}
+      {holToday && holToday.h && holGreet && <HolidayGreet hol={holToday} onClose={() => setHolGreet(false)} />}
 
       {holTester && (holTest < 0 ? (
         <div className="hol-test"><button type="button" aria-label="Δοκιμή αργιών" onClick={() => setHolTest(0)}>🎄</button></div>
@@ -4988,9 +4997,10 @@ const STATE_LABEL = {
   forfeit: "Δεν ήρθες",
 };
 
-function BookTab({ session, flash, credits, hasAhead, onMine, sig, hol }) {
+function BookTab({ session, flash, credits, hasAhead, onMine, sig, hol, onDate }) {
   const holSnow = !!(hol && hol.season);
   const [date, setDate] = useState(iso(new Date()));
+  useEffect(() => { if (onDate) onDate(date); }, [date, onDate]);
   const [slots, setSlots] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busySlot, setBusySlot] = useState(null);
