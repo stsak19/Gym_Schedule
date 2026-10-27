@@ -1646,7 +1646,7 @@ function App() {
   if (!isDesktop) {
     const dotFor = (k) => (k === "schedule" && tab !== "schedule" && somethingNew)
       || (k === "people" && tab !== "people" && signups.length > 0);
-    const inMore = !APP_TABS.some(([k]) => k === tab);
+    const inMore = tab !== "settings" && !APP_TABS.some(([k]) => k === tab);
     const title = tab === "chat" ? "Μηνύματα" : ((TABS.find(([k]) => k === tab) || [, "Διαχείριση"])[1]);
     const go = (k) => { setMoreOpen(false); setBellOpen(false); setTab(k); };
     return (
@@ -1711,7 +1711,7 @@ function App() {
               onClick={(e) => e.stopPropagation()}>
               <div className="mx-auto mb-3 mt-1 h-1.5 w-10 rounded-full bg-neutral-300" />
               <div className="overflow-hidden rounded-2xl border border-neutral-200">
-                {TABS.filter(([k]) => !APP_TABS.some(([a]) => a === k)).map(([k, label], i) => (
+                {TABS.filter(([k]) => k !== "settings" && !APP_TABS.some(([a]) => a === k)).map(([k, label], i) => (
                   <button key={k} onClick={() => go(k)}
                     className={`f-display flex h-14 w-full items-center justify-between px-4 text-left text-[15px] font-bold uppercase tracking-wide active:bg-neutral-100 ${i ? "border-t border-neutral-200" : ""} ${tab === k ? "bg-neutral-100" : "bg-white"}`}>
                     {label}<span className="text-neutral-400">›</span>
