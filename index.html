@@ -4270,7 +4270,13 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
      ώστε να βλέπει από πριν και τις επόμενες γιορτές. Αλλού, τη σημερινή. */
   const hol = useMemo(() => {
     if (holTester && holTest >= 0) return holToday;
-    if (tab === "book" && !settingsOpen && viewDate) return holidayState(parseISO(viewDate));
+    if (tab === "book" && !settingsOpen && viewDate) {
+      const sel = holidayState(parseISO(viewDate));
+      /* Τα Χριστούγεννα είναι έκπληξη: πριν την 1η Δεκεμβρίου δεν φαίνονται
+         από πριν, ακόμα κι αν ο πελάτης πατήσει μέρα της περιόδου. */
+      if (sel && sel.xmas && !(holToday && holToday.xmas)) return holToday;
+      return sel;
+    }
     return holToday;
   }, [holTester, holTest, holToday, tab, settingsOpen, viewDate]);
   const [holGreet, setHolGreet] = useState(false);
