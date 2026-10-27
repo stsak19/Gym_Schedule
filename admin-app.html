@@ -4102,30 +4102,27 @@ function Stats({ flash, onAuthFail }) {
 
   return (
     <div className="px-5 sm:px-6">
-      <h2 className="f-display pt-6 text-[24px] font-extrabold uppercase tracking-tight">Στατιστικά</h2>
-      <p className="f-text mt-1 max-w-[60ch] text-[13px] leading-relaxed text-neutral-500">
-        Πόσος κόσμος έρχεται σε κάθε ενεργή ώρα, κατά μέσο όρο ανά μέρα. Μετράνε μόνο μέρες
-        που πέρασαν και μόνο όσοι πήραν θέση — οι ακυρώσεις και όσοι δεν ήρθαν δεν μετράνε.
-      </p>
-
-      <div className="mt-5 flex border-2 border-black">
-        {STAT_PERIODS.map(([v, label], i) => (
-          <button key={v} onClick={() => setDays(v)}
-            className={`f-display flex-1 py-2.5 text-[12px] font-bold uppercase tracking-wide ${
-              i > 0 ? "border-l-2 border-black" : ""} ${days === v ? "bg-black text-white" : "bg-white"}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-3 grid grid-cols-4 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
-        {STAT_DAYS.map(([v, label]) => (
-          <button key={v} onClick={() => setWeekday(v)}
-            className={`f-display border-2 py-2 text-[12px] font-bold uppercase sm:px-4 sm:text-[13px] ${
-              weekday === v ? "border-black bg-black text-white" : "border-neutral-300 hover:border-black"}`}>
-            {label}
-          </button>
-        ))}
+      {/* Πάνω, καρφωμένα: τίτλος, περίοδος, μέρα. */}
+      <div className="kpi-sticky sticky z-30 -mx-5 border-b border-neutral-200 bg-white px-5 pb-3 sm:-mx-6 sm:px-6">
+        <h2 className="f-display pt-4 text-[22px] font-extrabold uppercase tracking-tight">Στατιστικά</h2>
+        <div className="mt-3 flex overflow-hidden rounded-xl border-2 border-black">
+          {STAT_PERIODS.map(([v, label], i) => (
+            <button key={v} onClick={() => setDays(v)}
+              className={`f-display flex-1 py-2 text-[12px] font-bold uppercase tracking-wide ${
+                i > 0 ? "border-l-2 border-black" : ""} ${days === v ? "bg-black text-white" : "bg-white"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto">
+          {STAT_DAYS.map(([v, label]) => (
+            <button key={v} onClick={() => setWeekday(v)}
+              className={`f-display shrink-0 rounded-full border-2 px-3 py-1.5 text-[12px] font-bold uppercase ${
+                weekday === v ? "border-black bg-black text-white" : "border-neutral-300"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {data === null ? (
@@ -4133,78 +4130,69 @@ function Stats({ flash, onAuthFail }) {
       ) : data === false ? (
         <div className="f-text py-10 text-[14px] text-neutral-500">Δεν φόρτωσαν τα στατιστικά.</div>
       ) : st.hours.length === 0 ? (
-        <div className="f-text mt-6 border-2 border-dashed border-neutral-300 py-12 text-center text-[14px] text-neutral-500">
+        <div className="f-text mt-6 rounded-xl border-2 border-dashed border-neutral-300 py-12 text-center text-[14px] text-neutral-500">
           Καμία ενεργή ώρα {weekday === -1 ? "" : DAYS_EVERY[weekday]}.
         </div>
       ) : (
         <>
-          <div className="f-mono mt-4 text-[12px] text-neutral-500">
-            {fmtRange(data.from)} – {fmtRange(data.to)} · {dayWord}
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <SimpleTile label="Πληρότητα" value={`${Math.round(st.fill * 100)}%`} />
+            <SimpleTile label="Πιο γεμάτη" value={st.busiest[0] && st.busiest[0].avg > 0 ? st.busiest[0].time : "—"} />
+            <SimpleTile label="Πιο άδεια" value={st.quietest[0] ? st.quietest[0].time : "—"} />
           </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-            <Kpi label="Ενεργές ώρες" value={st.hours.length} />
-            <Kpi label="Μέση πληρότητα" value={`${Math.round(st.fill * 100)}%`} />
-            <Kpi label="Πιο γεμάτη" value={st.busiest[0] && st.busiest[0].avg > 0 ? st.busiest[0].time : "—"}
-              note={st.busiest[0] && st.busiest[0].avg > 0 ? `${fmtAvg(st.busiest[0].avg)} άτομα/μέρα` : ""} />
-            <Kpi label="Πιο άδεια" value={st.quietest[0] ? st.quietest[0].time : "—"}
-              note={st.quietest[0] ? `${fmtAvg(st.quietest[0].avg)} άτομα/μέρα` : ""} />
+          <div className="f-text mt-2 text-[12px] text-neutral-400">
+            {fmtRange(data.from)} – {fmtRange(data.to)} · μέσος όρος ανά μέρα
           </div>
 
           {st.withData.length === 0 && (
-            <p className="f-text mt-5 text-[13px] text-neutral-500">
-              Δεν υπάρχουν ακόμα κρατήσεις σε αυτό το διάστημα.
-            </p>
+            <p className="f-text mt-4 text-[13px] text-neutral-500">Δεν υπάρχουν ακόμα κρατήσεις σε αυτό το διάστημα.</p>
           )}
 
-          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-            Προτάσεις συγχώνευσης
-          </h3>
-          {st.merges.length === 0 ? (
-            <p className="f-text mt-2 max-w-[60ch] border-t-2 border-black pt-3 text-[13px] leading-relaxed text-neutral-500">
-              Καμία πρόταση για {dayWord}. Δεν υπάρχουν δύο διαδοχικές ώρες που να είναι και οι δύο
-              σχεδόν άδειες.
-            </p>
-          ) : (
-            <div className="mt-2 space-y-3">
-              {st.merges.map((m) => (
-                <div key={m.a.time} className="border-2 border-black p-4">
-                  <div className="f-display text-[16px] font-extrabold uppercase tracking-tight">
-                    {m.a.time} + {m.b.time} → {m.keep.time}
+          {st.merges.length > 0 && (
+            <>
+              <h3 className="f-display mt-7 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Πρόταση</h3>
+              <div className="mt-2 space-y-2">
+                {st.merges.map((m) => (
+                  <div key={m.a.time} className="rounded-xl border-2 border-black px-4 py-3">
+                    <div className="f-text text-[15px] leading-snug">
+                      Κλείσε τις <strong>{m.drop.time}</strong>, πήγαινέ τους στις <strong>{m.keep.time}</strong>
+                    </div>
+                    <div className="f-text mt-0.5 text-[12px] text-neutral-500">
+                      μαζί {fmtAvg(m.together)} άτομα · χωράνε {fmtAvg(m.room)}{m.tight ? " · κάποιες μέρες δεν χωράνε" : ""}
+                    </div>
                   </div>
-                  <p className="f-text mt-1.5 text-[14px] leading-relaxed">
-                    Κράτα τις <strong>{m.keep.time}</strong> και κλείσε τις <strong>{m.drop.time}</strong> {dayWord}.
-                    Μαζί έχουν κατά μέσο όρο {fmtAvg(m.together)} άτομα τη μέρα και χωράνε
-                    στις {fmtAvg(m.room)} θέσεις μίας ώρας.
-                  </p>
-                  <div className="f-mono mt-2 text-[12px] text-neutral-500">
-                    {m.a.time}: {fmtAvg(m.a.avg)}/μέρα · {m.b.time}: {fmtAvg(m.b.avg)}/μέρα
+                ))}
+              </div>
+            </>
+          )}
+
+          <h3 className="f-display mt-7 text-[13px] font-bold uppercase tracking-wide text-neutral-500">Ώρες</h3>
+          <div className="mt-2 space-y-2.5">
+            {st.hours.map((h) => {
+              const pct = Math.min(100, Math.round(h.fill * 100));
+              return (
+                <div key={h.time} className="flex items-center gap-3">
+                  <span className="f-mono w-[46px] shrink-0 text-[14px]">{h.time}</span>
+                  <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-neutral-200">
+                    <div className="h-full rounded-full bg-black" style={{ width: `${h.days ? pct : 0}%` }} />
                   </div>
-                  {m.tight && (
-                    <p className="f-text mt-2 text-[12px] leading-relaxed text-neutral-600">
-                      Προσοχή: σε μία μέρα ήρθαν μαζί {m.peakTogether} άτομα, περισσότερα από τις θέσεις.
-                      Αν συγχωνεύσεις, ίσως χρειαστεί να ανεβάσεις τις θέσεις της ώρας.
-                    </p>
-                  )}
+                  <span className="f-mono w-[38px] shrink-0 text-right text-[13px] text-neutral-600">{h.days ? `${pct}%` : "—"}</span>
                 </div>
-              ))}
-              <p className="f-text text-[12px] leading-relaxed text-neutral-500">
-                Η συγχώνευση γίνεται από τη «Χωρητικότητα» → «Κάθε εβδομάδα»: βάλε 0 θέσεις
-                στην ώρα που κλείνει.
-              </p>
-            </div>
-          )}
-
-          <h3 className="f-display mt-9 text-[13px] font-bold uppercase tracking-wide text-neutral-500">
-            Όλες οι ενεργές ώρες
-          </h3>
-          <div className="f-text mt-1 text-[12px] text-neutral-500">Μέσος όρος ατόμων / θέσεις ανά μέρα · πληρότητα</div>
-          <div className="mt-2 divide-y divide-neutral-200 border-y-2 border-black">
-            {st.hours.map((h) => <StatHourRow key={h.time} h={h} tag={tagOf(h)} />)}
+              );
+            })}
           </div>
         </>
       )}
       <div className="h-10" />
+    </div>
+  );
+}
+
+function SimpleTile({ label, value }) {
+  return (
+    <div className="rounded-xl border-2 border-black px-2 py-2.5 text-center">
+      <div className="f-mono text-[19px] leading-none">{value}</div>
+      <div className="f-text mt-1 truncate text-[11px] text-neutral-600">{label}</div>
     </div>
   );
 }
