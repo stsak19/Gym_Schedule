@@ -2324,6 +2324,7 @@ function Hours({ flash, onAuthFail }) {
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [askClose, setAskClose] = useState(false);
+  const [closeNote, setCloseNote] = useState("");
   const [busy, setBusy] = useState(false);
 
   /* Ίδιο παράθυρο με το Πρόγραμμα: όσες μέρες μπροστά ανοίγουν οι
@@ -2380,7 +2381,7 @@ function Hours({ flash, onAuthFail }) {
 
   /* Αλλάζοντας μέρα ή καρτέλα, η ερώτηση επιβεβαίωσης κλείνει — μη
      μείνει ανοιχτή και πατηθεί για άλλη μέρα από αυτήν που δείχνει. */
-  useEffect(() => { setAskClose(false); }, [date, scope, weekday]);
+  useEffect(() => { setAskClose(false); setCloseNote(""); }, [date, scope, weekday]);
 
   const today = iso(new Date());
   const allClosed = slots.length > 0 && slots.every((s) => s.capacity === 0);
@@ -2439,8 +2440,16 @@ function Hours({ flash, onAuthFail }) {
     const failed = await setAll(0);
     if (failed === "AUTH") { setBusy(false); onAuthFail(); return; }
 
+    /* Το μήνυμα προς τους πελάτες (π.χ. «Κλειστά λόγω εθνικής εορτής,
+       χρόνια πολλά»). Μόνο για συγκεκριμένη μέρα. */
+    if (scope === "date") {
+      const { error: nErr } = await rpc("admin_set_day_note", { p_date: date, p_message: closeNote.trim() });
+      if (nErr && nErr !== "AUTH") flash("Έκλεισε, αλλά το μήνυμα δεν αποθηκεύτηκε");
+    }
+
     setBusy(false);
     setAskClose(false);
+    setCloseNote("");
     if (failed) flash("Κάποιες ώρες δεν έκλεισαν");
     else if (cancelled) flash(`Κλειστά · ${cancelled} ${cancelled === 1 ? "κράτηση ακυρώθηκε" : "κρατήσεις ακυρώθηκαν"}`);
     else flash("Κλειστά");
@@ -2462,6 +2471,7 @@ function Hours({ flash, onAuthFail }) {
 
     const failed = await setAll(cap);
     if (failed === "AUTH") { setBusy(false); onAuthFail(); return; }
+    if (scope === "date") await rpc("admin_set_day_note", { p_date: date, p_message: "" });
 
     setBusy(false);
     flash(failed ? "Κάποιες ώρες δεν άνοιξαν" : `Άνοιξε · ${cap} θέσεις ανά ώρα`);
@@ -2556,6 +2566,17 @@ function Hours({ flash, onAuthFail }) {
               </>
             )}
           </p>
+          {scope === "date" && (
+            <label className="mt-4 block">
+              <span className="f-display text-[11px] font-bold uppercase tracking-wide text-neutral-500">Μήνυμα προς τους πελάτες</span>
+              <textarea value={closeNote} onChange={(e) => setCloseNote(e.target.value.slice(0, 300))} rows={3}
+                placeholder="π.χ. Κλειστά λόγω εθνικής εορτής. Χρόνια πολλά! 🇬🇷"
+                className="f-text mt-1.5 block w-full resize-none rounded-2xl border-2 border-neutral-200 bg-neutral-50 px-4 py-3 text-[16px] leading-relaxed outline-none transition-colors focus:border-black focus:bg-white" />
+              <span className="f-text mt-1 block text-[12px] text-neutral-400">
+                Το βλέπουν στην εφαρμογή στη θέση του «Ξεκουράσου». Προαιρετικό.
+              </span>
+            </label>
+          )}
           <div className="mt-4 flex flex-wrap gap-2">
             <Button disabled={busy} onClick={closeAll}>
               {busy ? "Κλείσιμο…" : "Ναι, κλειστά"}
