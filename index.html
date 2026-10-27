@@ -4935,14 +4935,9 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
       ) : (slots || []).length === 0 ? (
         <div className="px-5 py-16 text-center">
           {dayNote ? (
-            <>
-              <div className="f-display text-[34px] font-extrabold uppercase leading-none tracking-tight">
-                Κλειστά 🖤
-              </div>
-              <p className="f-text mx-auto mt-4 max-w-[30ch] whitespace-pre-line text-[17px] leading-relaxed text-black">
-                {dayNote}
-              </p>
-            </>
+            <p className="f-display mx-auto max-w-[22ch] whitespace-pre-line text-[24px] font-extrabold leading-snug tracking-tight text-black">
+              {dayNote}
+            </p>
           ) : (<>
           <div className="f-display text-[34px] font-extrabold uppercase leading-none tracking-tight">
             Ξεκουράσου 🖤
