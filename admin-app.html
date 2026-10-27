@@ -131,6 +131,21 @@ body { -webkit-tap-highlight-color: transparent; }
 [data-theme="dark"] .border-red-600 { border-color: #A33 !important; }
 [data-theme="dark"] .text-red-700 { color: #FF9A9A !important; }
 [data-theme="dark"] .text-red-800 { color: #FFC0C0 !important; }
+
+/* ── Εφαρμογή (δοκιμαστικό admin-app) ─────────────────── */
+.app-shell { min-height: 100vh; min-height: 100dvh; }
+[data-theme="dark"] .app-bar { background: rgba(12,12,12,.95) !important; border-color: #2A2A2A !important; }
+[data-theme="dark"] .app-sheet { background: #161616 !important; }
+[data-theme="dark"] .app-sheet button { background: transparent !important; border-color: #2A2A2A !important; }
+html, body { overscroll-behavior-y: none; }
+.app-bar, .app-bar * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.app-screen .sticky.bottom-0 { bottom: calc(4rem + env(safe-area-inset-bottom)); }
+.app-screen { animation: appIn .18s ease-out; }
+@keyframes appIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.app-sheet { animation: appSheet .22s cubic-bezier(.2,.8,.2,1); }
+@keyframes appSheet { from { transform: translateY(100%); } to { transform: none; } }
+.app-fade { animation: appFade .2s ease-out; }
+@keyframes appFade { from { opacity: 0; } to { opacity: 1; } }
 </style>
 
 <meta name="theme-color" content="#FFFFFF" />
@@ -1114,6 +1129,25 @@ const TABS = [
   ["settings", "Ρυθμίσεις"],
 ];
 
+/* Οι 4 κύριες καρτέλες της κάτω μπάρας (εφαρμογή). Οι υπόλοιπες στο «Άλλα». */
+const APP_TABS = [
+  ["schedule", "Ημέρα", "cal"],
+  ["people", "Πελάτες", "people"],
+  ["hours", "Ώρες", "clock"],
+  ["stats", "Στατ.", "chart"],
+];
+
+function AppIcon({ name, on }) {
+  const sw = on ? 2.4 : 1.8;
+  const c = { width: 24, height: 24, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+    strokeWidth: sw, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
+  if (name === "cal") return (<svg {...c}><rect x="3.5" y="5" width="17" height="15.5" rx="3" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>);
+  if (name === "people") return (<svg {...c}><circle cx="9" cy="8.5" r="3.5" /><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" /><path d="M16 5.2a3.3 3.3 0 0 1 0 6.6M18.5 14.8c1.6.8 2.6 2.5 3 5.2" /></svg>);
+  if (name === "clock") return (<svg {...c}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>);
+  if (name === "chart") return (<svg {...c}><path d="M4 20V10M10 20V4M16 20v-7M21 20H3" /></svg>);
+  return (<svg {...c}><circle cx="5.5" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="18.5" cy="12" r="1.3" fill="currentColor" /></svg>);
+}
+
 /* Κρατήσεις που δεν αλλάζουν πια από το πρόγραμμα. */
 const DECIDED_LABEL = {
   absent_pending: "Δήλωσε ότι δεν ήρθε · απόφαση πιο πάνω",
@@ -1387,6 +1421,8 @@ function App() {
   const [authed, setAuthed] = useState(hasSession);
   const [checking, setChecking] = useState(hasSession);
   const [tab, setTab] = useState("schedule");
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => { try { window.scrollTo(0, 0); } catch (e) {} }, [tab]);
   /* Πάτημα σε όνομα στο Πρόγραμμα → καρτέλα του πελάτη στους Πελάτες. */
   const [openClientId, setOpenClientId] = useState(null);
   const goToClient = useCallback((id) => {
@@ -1596,51 +1632,81 @@ function App() {
   );
 
   if (!isDesktop) {
+    const dotFor = (k) => (k === "schedule" && tab !== "schedule" && somethingNew)
+      || (k === "people" && tab !== "people" && signups.length > 0);
+    const inMore = !APP_TABS.some(([k]) => k === tab);
+    const title = tab === "chat" ? "Μηνύματα" : ((TABS.find(([k]) => k === tab) || [, "Διαχείριση"])[1]);
+    const go = (k) => { setMoreOpen(false); setBellOpen(false); setTab(k); };
     return (
-      <div style={FONT} className="gym-root min-h-screen bg-white text-black">
-        {/* Η κεφαλίδα και οι επιλογές μένουν καρφωμένες στην κορυφή
-            όσο κυλάει το περιεχόμενο από κάτω. Δύο γραμμές: πάνω το
-            όνομα με ήχο, καμπάνα και μηνύματα, από κάτω το μενού με την
-            έξοδο. Σε μία γραμμή δεν χωρούσαν και ο τίτλος κοβόταν. */}
-        <div className="sticky top-0 z-40 border-b-2 border-black bg-white"
+      <div style={FONT} className="gym-root app-shell bg-white text-black">
+        {/* Κεφαλίδα εφαρμογής: μικρό λογότυπο, τίτλος της οθόνης, ενέργειες. */}
+        <header className="app-bar fixed inset-x-0 top-0 z-40 border-b border-neutral-200 bg-white/95 backdrop-blur"
           style={{ paddingTop: "env(safe-area-inset-top)" }}>
-          <header className="flex items-center justify-between gap-3 px-4 pb-2.5 pt-3">
+          <div className="flex h-14 items-center justify-between gap-3 px-4">
             <div className="flex min-w-0 items-center gap-2.5">
-              <Logo size={34} />
-              <div className="min-w-0">
-                <div className="f-display truncate text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-400">{brand}</div>
-                <div className="f-display truncate text-[18px] font-extrabold uppercase leading-tight">Διαχείριση</div>
-              </div>
+              <Logo size={28} />
+              <div className="f-display truncate text-[20px] font-extrabold uppercase leading-none">{title}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <SoundSwitch on={sound} onToggle={toggleSound} />
               <Bell count={watch.unseen} active={bellOpen} onClick={toggleBell} />
               <ChatButton count={chat.unread} active={tab === "chat" && !bellOpen} off={chatOn === false} onClick={openChat} />
             </div>
-          </header>
-
-          <div className="flex items-center gap-2 px-4 pb-3">
-            <div className="relative min-w-0 flex-1">
-              <select value={tab} onChange={(e) => setTab(e.target.value)} aria-label="Ενότητα"
-                className="f-display h-11 w-full appearance-none border-2 border-black bg-white pl-3 pr-9 text-[14px] font-bold uppercase tracking-wide outline-none">
-                {TABS.map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-                {/* Τα μηνύματα ανοίγουν από το εικονίδιο πάνω. Η κρυφή επιλογή
-                    υπάρχει μόνο για να γράφει σωστά η λίστα όσο είναι ανοιχτά. */}
-                {tab === "chat" && <option value="chat" hidden>Μηνύματα</option>}
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px]">▼</span>
-              {((somethingNew && tab !== "schedule")
-                || (signups.length > 0 && tab !== "people" && tab !== "schedule")) && (
-                <Dot className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2" />
-              )}
-            </div>
-            <Button variant="ghost" size="sm" className="shrink-0" onClick={logout}>Έξοδος</Button>
           </div>
-        </div>
+        </header>
 
-        <main style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}>{content}</main>
+        <main key={tab} className="app-screen"
+          style={{
+            paddingTop: "calc(3.5rem + env(safe-area-inset-top))",
+            paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))",
+          }}>{content}</main>
+
+        {/* Κάτω μπάρα καρτελών, όπως στις εφαρμογές του κινητού. */}
+        <nav className="app-bar fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="grid h-16 grid-cols-5">
+            {APP_TABS.map(([k, label, icon]) => {
+              const on = tab === k && !moreOpen;
+              return (
+                <button key={k} onClick={() => go(k)} aria-label={label}
+                  className={`relative flex flex-col items-center justify-center gap-1 ${on ? "text-black" : "text-neutral-400"}`}>
+                  <AppIcon name={icon} on={on} />
+                  <span className="f-display text-[11px] font-bold uppercase tracking-wide">{label}</span>
+                  {dotFor(k) && <Dot className="absolute right-[calc(50%-18px)] top-2" />}
+                </button>
+              );
+            })}
+            <button onClick={() => setMoreOpen((v) => !v)} aria-label="Περισσότερα"
+              className={`relative flex flex-col items-center justify-center gap-1 ${(inMore && tab !== "chat") || moreOpen ? "text-black" : "text-neutral-400"}`}>
+              <AppIcon name="more" on={(inMore && tab !== "chat") || moreOpen} />
+              <span className="f-display text-[11px] font-bold uppercase tracking-wide">Άλλα</span>
+            </button>
+          </div>
+        </nav>
+
+        {/* Φύλλο «Περισσότερα» από κάτω. */}
+        {moreOpen && (
+          <div className="fixed inset-0 z-[45]" onClick={() => setMoreOpen(false)}>
+            <div className="app-fade absolute inset-0 bg-black/30" />
+            <div className="app-sheet absolute inset-x-0 bottom-0 rounded-t-3xl bg-white px-4 pt-2"
+              style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div className="mx-auto mb-3 mt-1 h-1.5 w-10 rounded-full bg-neutral-300" />
+              <div className="overflow-hidden rounded-2xl border border-neutral-200">
+                {TABS.filter(([k]) => !APP_TABS.some(([a]) => a === k)).map(([k, label], i) => (
+                  <button key={k} onClick={() => go(k)}
+                    className={`f-display flex h-14 w-full items-center justify-between px-4 text-left text-[15px] font-bold uppercase tracking-wide active:bg-neutral-100 ${i ? "border-t border-neutral-200" : ""} ${tab === k ? "bg-neutral-100" : "bg-white"}`}>
+                    {label}<span className="text-neutral-400">›</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => { setMoreOpen(false); logout(); }}
+                className="f-display mt-3 flex h-14 w-full items-center justify-center rounded-2xl border border-neutral-200 text-[15px] font-bold uppercase tracking-wide text-red-600 active:bg-neutral-100">
+                Έξοδος
+              </button>
+            </div>
+          </div>
+        )}
         {bellPanel}
         <Toast msg={toast} />
       </div>
