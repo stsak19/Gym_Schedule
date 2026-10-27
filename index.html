@@ -2051,6 +2051,180 @@ html.is-landscape-phone, html.is-landscape-phone body { overflow: hidden; }
 <div id="root"><div id="boot-status" style="font-family:system-ui,sans-serif;padding:24px;color:#666;font-size:14px;">Φόρτωση…</div></div>
 
 
+<style>
+/* ── Αργίες & γιορτινά θέματα (μόνο λογαριασμοί δοκιμής προς το παρόν) ── */
+/* Το μαύρο της εφαρμογής παίρνει το χρώμα της γιορτής. Μόνο στο ανοιχτό θέμα. */
+html[data-hol]:not([data-theme="dark"]) #root .gym-hol .bg-black { background-color: var(--hol) !important; }
+html[data-hol]:not([data-theme="dark"]) #root .gym-hol .border-black { border-color: var(--hol) !important; }
+.hol-banner { margin: 14px 20px 0; text-align: center; flex: none; color: var(--hol, #000); }
+[data-theme="dark"] .hol-banner { color: #F2F2F2; }
+.hol-banner b { display: block; font-family: 'Press Start 2P', monospace; font-size: 14px; line-height: 1.6; font-weight: 400; }
+.hol-scene { flex: none; height: 118px; position: relative; overflow: visible; pointer-events: none; margin-top: -30px; z-index: 1; }
+.hol-scene svg { display: block; width: 100%; height: 100%; }
+.gym-hol nav { position: relative; z-index: 6; }
+.hol-particle { position: fixed; top: -2rem; z-index: 55; pointer-events: none; font-size: 1.3rem; animation: hol-fall linear infinite; }
+@keyframes hol-fall { to { transform: translateY(110vh) rotate(360deg); } }
+.hol-px { display: block; width: 7px; height: 7px; background: #9DBEDD; }
+.hol-rest h3 { font-family: 'Press Start 2P', monospace; font-size: 18px; line-height: 1.6; margin: 0; font-weight: 400; }
+/* Χιόνι πάνω σε κάθε ώρα στην περίοδο των Χριστουγέννων */
+.hol-snowy { position: relative; }
+.hol-snowy::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 8px; pointer-events: none; image-rendering: pixelated;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='8' shape-rendering='crispEdges'><g fill='%23DCEBFA'><rect x='0' y='0' width='48' height='2'/><rect x='2' y='2' width='10' height='2'/><rect x='4' y='4' width='5' height='2'/><rect x='18' y='2' width='6' height='2'/><rect x='28' y='2' width='14' height='2'/><rect x='31' y='4' width='8' height='2'/><rect x='34' y='6' width='3' height='2'/></g><g fill='%23FFFFFF'><rect x='4' y='0' width='4' height='1'/><rect x='30' y='0' width='6' height='1'/></g></svg>") repeat-x; }
+/* Παγωμένη λέξη «Κράτηση» */
+#root button.hol-frost { position: relative; overflow: visible; color: #EAF8FF !important;
+  text-shadow: 0 0 3px #A8DDFF, 0 0 7px rgba(168,221,255,.7), 0 1px 0 #CFEFFF; animation: hol-frost 2.8s ease-in-out infinite; }
+@keyframes hol-frost { 50% { text-shadow: 0 0 5px #CFEFFF, 0 0 11px rgba(190,232,255,.9), 0 1px 0 #fff; } }
+#root button.hol-frost::before { content: ''; position: absolute; left: 4px; right: 4px; top: -5px; height: 5px; background: #DCEBFA; box-shadow: inset 0 2px #fff;
+  clip-path: polygon(0 100%,0 40%,15% 40%,15% 0,45% 0,45% 40%,70% 40%,70% 20%,90% 20%,90% 60%,100% 60%,100% 100%); }
+#root button.hol-frost::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -6px; height: 6px; background: #CFEFFF;
+  clip-path: polygon(0 0,100% 0,100% 15%,92% 15%,92% 70%,86% 70%,86% 15%,64% 15%,64% 100%,58% 100%,58% 15%,38% 15%,38% 55%,32% 55%,32% 15%,14% 15%,14% 85%,8% 85%,8% 15%,0 15%); }
+/* Ευχή σε όλη την οθόνη ανήμερα */
+.hol-greet { position: fixed; inset: 0; z-index: 72; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 32px calc(env(safe-area-inset-bottom) + 28px);
+  background: var(--hol, #000); color: #fff; opacity: 0; transition: opacity .45s ease; }
+.hol-greet.in { opacity: 1; }
+.hol-greet .ic { text-align: center; }
+.hol-greet h2 { margin: 14px 0 0; text-align: center; font-family: 'Press Start 2P', monospace; font-weight: 400; font-size: clamp(20px, 6.5vw, 30px); line-height: 1.4; }
+.hol-greet p { margin: 20px auto 0; max-width: 24rem; text-align: center; font-size: 19px; font-weight: 500; line-height: 1.35; color: rgba(255,255,255,.85); }
+.hol-greet button { margin: 0 auto; height: 56px; width: 100%; max-width: 24rem; border-radius: 16px; border: 1px solid #fff; background: #fff; color: var(--hol, #000); font-family: 'Big Shoulders Display', sans-serif; font-size: 17px; font-weight: 700; }
+/* Μπάρα δοκιμής: μόνο λογαριασμοί δοκιμής */
+.hol-test { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 80; display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 999px; background: #1F1F1F; color: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.3); max-width: calc(100vw - 32px); }
+.hol-test span { padding: 0 8px; font: 700 14px 'Big Shoulders Text', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hol-test button { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: #3A3A3A; color: #fff; font-size: 14px; }
+/* Pixel κινήσεις των σκηνών */
+.ps{animation:psf steps(24) infinite}@keyframes psf{to{transform:translateY(66px)}}
+.pboom{animation:pboom 3.4s steps(6) infinite;opacity:0}@keyframes pboom{0%{transform:scale(.2);opacity:0}15%{opacity:1}55%{transform:scale(1);opacity:1}75%,100%{transform:scale(1.2);opacity:0}}
+.hop{animation:hop 1s steps(2) infinite}@keyframes hop{50%{transform:translateY(-2px)}}
+.blink{animation:blink 1s steps(2) infinite}@keyframes blink{50%{opacity:.25}}
+.pdrift{animation:pdrift 10s steps(80) infinite}.pdrift.slow{animation-duration:18s}@keyframes pdrift{from{transform:translateX(-30px)}to{transform:translateX(220px)}}
+.pkite{animation:pkite 2.4s steps(4) infinite alternate}@keyframes pkite{to{transform:translate(4px,-4px)}}
+.fw{animation:fw 1.2s steps(4) infinite alternate}@keyframes fw{from{transform:translateY(-1px)}to{transform:translateY(2px)}}
+.flick{animation:flick .4s steps(2) infinite}@keyframes flick{50%{transform:translateY(-1px)}}
+.glowp{animation:blink 1.6s steps(3) infinite}
+.psway{animation:psway 1.6s steps(2) infinite}@keyframes psway{50%{transform:translateX(1px)}}
+.jumpf{animation:jumpf 2.4s steps(8) infinite}@keyframes jumpf{0%,50%,100%{transform:translateY(0)}25%{transform:translate(8px,-12px)}}
+.pcrab{animation:pcrab 2s steps(8) infinite alternate}@keyframes pcrab{to{transform:translateX(30px)}}
+.pw{animation:pw 1.2s steps(4) infinite}@keyframes pw{to{transform:translateX(8px)}}
+@media (prefers-reduced-motion: reduce) { .hol-particle, .hol-scene * , #root button.hol-frost { animation: none !important; } .hol-particle { display: none; } }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap&subset=greek,latin" rel="stylesheet" />
+<script>
+/* ── Αργίες & γιορτινά θέματα ─────────────────────────────────
+   Ελληνικές αργίες (σταθερές + από το ορθόδοξο Πάσχα), pixel σκηνές,
+   μηνύματα και η χριστουγεννιάτικη περίοδος 1/12–6/1.
+   Προς το παρόν ενεργό ΜΟΝΟ για τους λογαριασμούς δοκιμής
+   (HOLIDAY_TESTERS στο κυρίως script). */
+window.PB3Holiday=(function(){
+function orthodoxEaster(y){const a=y%4,b=y%7,c=y%19,d=(19*c+15)%30,e=(2*a+4*b-d+34)%7;const m=Math.floor((d+e+114)/31),day=((d+e+114)%31)+1;const r=new Date(y,m-1,day);r.setDate(r.getDate()+13);return r}
+const add=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const PAL={M:'#EFEAE0',m:'#D6CDBC',n:'#B9AD97',K:'#1A1A2E',W:'#FFFFFF',w:'#DCEBFA',G:'#2EA44F',g:'#1B7A38',R:'#E63946',r:'#A4161A',Y:'#FFD23F',O:'#FF8C1A',B:'#2E86DE',b:'#0D5EAF',T:'#8B5A2B',P:'#FF5D8F',V:'#9B5DE5',C:'#FFF4DD',S:'#F3E4C8',L:'#7BD389',A:'#6EC6FF'};
+/* Ζωγραφίζει ένα sprite από γράμματα, με σκούρο περίγραμμα γύρω-γύρω όπως στα παλιά παιχνίδια. */
+function spr(rows,x=0,y=0,s=1,outline=false){
+  const h=rows.length,w=rows[0].length,at=(i,j)=>i>=0&&j>=0&&i<h&&j<w&&rows[i][j]!=='.';let o='',f='';
+  for(let i=-1;i<=h;i++)for(let j=-1;j<=w;j++){
+    if(at(i,j)){f+=`<rect x="${x+j*s}" y="${y+i*s}" width="${s}" height="${s}" fill="${PAL[rows[i][j]]}"/>`}
+    else if(outline&&(at(i-1,j)||at(i+1,j)||at(i,j-1)||at(i,j+1)))o+=`<rect x="${x+j*s}" y="${y+i*s}" width="${s}" height="${s}" fill="#1A1A2E"/>`}
+  return o+f}
+const icon=(rows,px=4)=>{const w=(rows[0].length+2)*px,h=(rows.length+2)*px;return `<svg width="${w}" height="${h}" viewBox="-1 -1 ${rows[0].length+2} ${rows.length+2}" shape-rendering="crispEdges" style="vertical-align:middle;display:inline-block">${spr(rows)}</svg>`};
+const S={
+ tree:["......Y......",".....YYY.....","......G......",".....GGG.....","....GGRGG....","...GGGGGgG...","....GGGGG....","...GGBGGgGG..","..GGGGGGYGg..","...GGGGGGG...","..GGRGGGGgG..",".GGGGGGGBGgG.","GGGGYGGGGGGRg",".....TTT.....",".....TTT....."],
+ snowman:["...KKK...","...KKK...","..KKKKK..","..WWWWW..",".WWKWKWW.",".WWWOOWw.","..WWWWw..",".RRRRRRR.","WWWWKWWWw","WWWWWWWWw","WWWWKWWWw",".WWWWWWw."],
+ gift:["..Y.Y..","...Y...","RRRYRRR","RRRYRRr","YYYYYYY","RRRYRRr","RRRYRRr"],
+ giftB:["..W.W..","...W...","BBBWBBB","BBBWBBb","WWWWWWW","BBBWBBb","BBBWBBb"],
+ flake:["..w..","w.w.w",".www.","w.w.w","..w.."],
+ dove:["......WW...",".....WWWKO.","WW..WWWWw..",".WWWWWWWw..","..WWWWWw...","...wwww...."],
+ cross:["..Y..","..Y..","YYYYY","..Y..","..Y..","..Y..","..Y.."],
+ drop:["..A..",".AAA.","AAAWA","AAAAA",".AAA."],
+ kiteR:["...R...","..RRY..",".RRRYY.","RRRRYYY",".rrrYY.","..rrY..","...r..."],
+ kiteB:["...B...","..BBY..",".BBBYY.","BBBBYYY",".bbbYY.","..bbY..","...b..."],
+ kiteV:["...V...","..VVP..",".VVVPP.","VVVVPPP",".VVVPP.","..VVP..","...V..."],
+ flame:[".Y.","YOY","OYO",".O."],
+ candle:["CCC","CCC","CCC","CCC","CCC","CCC","CCC","CCC"],
+ egg:["..RR..",".RRRR.","RRRRRr","RYRRYr","RRRRRr","RRYYRr",".RRRr.","..rr.."],
+ chick:["..YYY..",".YYKYY.",".YYYYOO","YYYYYY.","YYYYYY.",".YYYY..","..O.O.."],
+ flowerP:[".P.P.","PPYPP",".PPP.","..G..",".GG..","..G.."],
+ flowerV:[".V.V.","VVYVV",".VVV.","..G..","..GG.","..G.."],
+ flowerY:[".Y.Y.","YYOYY",".YYY.","..G..",".GG..","..G.."],
+ sun:["....Y....",".Y.....Y.","...YYY...","..YYYYY..","Y.YYYYY.Y","..YYYYY..","...YYY...",".Y.....Y.","....Y...."],
+ boat:["....K....","....WW...","....WWW..","....WWWW.","....K....","RRRRRRRRR",".RRRRRRr.","..rrrrr.."],
+ church:[".....K.....","....KKK....",".....K.....","...BBBBB...","..BBBBBBB..",".WWWWWWWWw.",".WWWWWWWWw.",".WWBBWWWWw.",".WWBBWWBWw.",".WWBBWWWWw."],
+ fish:[".OOO.O","OKOOOO","OOOOOO",".OOO.O"],
+ crab:["R.......R",".R.RRR.R.","..RKRKR..","..RRRRR..",".R.R.R.R."],
+ ball:[".RRWW.","RRRWWB","RRWWBB","YYWWBB","YYYWBB",".YYBB."],
+ hat:["...Y...","...P...","..PPP..","..PYP..",".PPPPP.",".PYPYP.","PPPPPPP"],
+ bottle:["..K..","..g..","..g..",".ggg.","gggGg","gYYYg","gYYYg","ggggg"],
+ heart:[".R.R.","RRRRR","RRRRR",".RRR.","..R.."],
+ wreathL:["..G.","GG..",".GG.","..GG",".GG.","GG..","..G."],
+};
+const PARTHENON=(()=>{const W=23,r=[];
+ for(let i=0;i<4;i++){const pad=Math.round((3-i)*3.2);r.push('.'.repeat(pad)+'M'.repeat(W-2*pad)+'.'.repeat(pad))}
+ r.push('n'.repeat(W));r.push('m'.repeat(W));
+ for(let i=0;i<7;i++){let s='';for(let j=0;j<W;j++){const k=j%3;s+=k===0?'M':k===1?'m':'.'}r.push(s)}
+ r.push('n'.repeat(W));r.push('m'.repeat(W));return r})();
+const marble=(y)=>{let o=`<rect x="-20" y="${y}" width="240" height="${60-y}" fill="#EFEAE0"/><rect x="-20" y="${y}" width="240" height="1" fill="#D6CDBC"/>`;
+ for(let x=-20;x<220;x+=24)o+=`<rect x="${x}" y="${y}" width="1" height="${60-y}" fill="#D6CDBC"/>`;
+ [[6,2],[30,4],[58,3],[90,5],[124,2],[150,4],[182,3]].forEach(([x,dy])=>o+=`<rect x="${x}" y="${y+dy}" width="3" height="1" fill="#C9BFAD"/><rect x="${x+3}" y="${y+dy+1}" width="4" height="1" fill="#C9BFAD"/>`);return o};
+const FLAGROWS=(()=>{const r=[];for(let i=0;i<18;i++){let s='';for(let j=0;j<27;j++){let c=(Math.floor(i/2)%2===0)?'b':'W';if(i<10&&j<10)c=(i===4||i===5||j===4||j===5)?'W':'b';s+=c}r.push(s)}return r})();
+const flagSmall=["bbWbbbbb","WWWWWWWW","bbWbbWWW","bbbbbbbb","WWWWWWWW","bbbbbbbb"];
+/* Η σημαία κυματίζει σε στήλες, σαν παλιό sprite. */
+function wavingFlag(x,y,s){let o='';for(let j=0;j<27;j++){const col=FLAGROWS.map(r=>r[j]);o+=`<g class="fw" style="animation-delay:${(-j*0.06).toFixed(2)}s">`;col.forEach((c,i)=>o+=`<rect x="${x+j*s}" y="${y+i*s}" width="${s}" height="${s}" fill="${PAL[c]}"/>`);o+=`</g>`}return o}
+const ground=(c1,c2,y=52)=>{let o=`<rect x="-20" y="${y+1}" width="240" height="${Math.max(0,60-y-1)}" fill="${c1}"/>`;for(let x=-20;x<220;x+=2)o+=`<rect x="${x}" y="${y-(x%6===0?1:0)}" width="2" height="${(x%6===0?2:1)}" fill="${c2}"/>`;return o+`<rect x="-20" y="${y-2}" width="240" height="1" fill="#1A1A2E" opacity="0"/>`};
+const waves=(y,c1,c2,cls='pw')=>{let o=`<g class="${cls}">`;for(let x=-24;x<232;x+=8)o+=`<rect x="${x}" y="${y}" width="4" height="2" fill="${c2}"/><rect x="${x+4}" y="${y+1}" width="4" height="2" fill="${c2}"/>`;return o+`<rect x="-24" y="${y+2}" width="256" height="${Math.max(0,60-y-2)}" fill="${c1}"/></g>`};
+const psnow=(n)=>Array.from({length:n},()=>`<rect class="ps" x="${Math.round(rnd(0,200))}" y="-3" width="${Math.random()<.3?2:1}" height="${Math.random()<.3?2:1}" fill="#9DBEDD" style="animation-duration:${rnd(3,6).toFixed(1)}s;animation-delay:-${rnd(0,6).toFixed(1)}s"/>`).join('');
+const pconf=(n,cols)=>Array.from({length:n},(_,k)=>`<rect class="ps" x="${Math.round(rnd(0,200))}" y="-3" width="2" height="2" fill="${cols[k%cols.length]}" style="animation-duration:${rnd(2.5,5).toFixed(1)}s;animation-delay:-${rnd(0,5).toFixed(1)}s"/>`).join('');
+const burst=(x,y,c,d)=>{let o=`<g class="pboom" style="transform-origin:${x}px ${y}px;animation-delay:${d}s">`;[[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1]].forEach(([dx,dy])=>{for(let k=3;k<=9;k+=3)o+=`<rect x="${x+dx*k}" y="${y+dy*k}" width="2" height="2" fill="${c}"/>`});return o+`</g>`};
+const T={newyear:['#9A7410',icon(S.hat,4),[icon(S.heart,2),icon(["YY","YY"],3),icon(["PP","PP"],3)]],epiphany:['#1F6FA8',icon(S.dove,4),[icon(S.drop,3)]],cleanmon:['#25804A',icon(S.kiteR,4),[icon(S.kiteB,3)]],national:['#0D5EAF',icon(flagSmall,4),[icon(flagSmall,3)]],goodfri:['#4F3F7E',icon([...S.flame,...S.candle.slice(0,5)],4),[]],easter:['#B81D33',icon(S.egg,4),[icon(S.egg,3),icon(S.flowerP,3)]],mayday:['#C2410C',icon(S.flowerY,4),[icon(S.flowerP,3),icon(S.flowerV,3),icon(S.flowerY,3)]],spirit:['#0E7A8C',icon(S.sun,4),[icon(S.fish,3)]],august15:['#1E6091',icon(S.boat,4),[icon(S.fish,3)]],christmas:['#A3001A',icon(S.tree,4),['<i class="px"></i>']]};
+const SCENES={
+christmas:()=>{let g=`<rect x="-20" y="50" width="240" height="10" fill="#EAF3FB"/>`;for(let x=-21;x<220;x+=3)if(x%9===0)g+=`<rect x="${x}" y="47" width="3" height="3" fill="#EAF3FB"/>`;
+return g+`<g class="hop">${spr(S.snowman,14,14,3)}</g>${spr(S.tree,81,4,3)}<g class="hop" style="animation-delay:.4s">${spr(S.gift,135,35,2)}</g><g class="hop" style="animation-delay:.7s">${spr(S.giftB,160,35,2)}</g>`},
+newyear:()=>`${burst(40,18,'#FFD23F',0)}${burst(100,12,'#FF5D8F',.8)}${burst(160,20,'#6EC6FF',1.6)}${burst(70,30,'#7BD389',2.3)}${burst(135,32,'#9B5DE5',2.9)}
+<g class="hop">${spr(S.hat,26,36,2)}</g><g class="hop" style="animation-delay:.4s">${spr(S.bottle,160,38,2)}</g>
+<text x="100" y="56" text-anchor="middle" font-family="'Press Start 2P',monospace" font-size="9" fill="#FFD23F" stroke="#1A1A2E" stroke-width="1.6" paint-order="stroke" class="blink">${new Date().getFullYear()+1}</text>${pconf(26,['#FFD23F','#FF5D8F','#6EC6FF','#7BD389'])}`,
+epiphany:()=>`${spr(S.sun,170,4,1.6)}${waves(46,'#2E86DE','#6EC6FF')}<g class="hop">${spr(S.cross,96,30,2)}</g>
+<g class="jumpf">${spr(S.fish,50,48,1.5)}</g><g class="jumpf" style="animation-delay:1.2s">${spr(S.fish,140,50,1.5)}</g>
+<g class="pdrift">${spr(S.dove,0,8,1.6)}</g>`,
+cleanmon:()=>`${spr(S.sun,8,4,1.6)}${ground('#7BD389','#2EA44F',52)}
+${[[S.kiteR,60,6,0],[S.kiteB,110,2,.5],[S.kiteV,155,10,1]].map(([k,x,y,d])=>`<g class="pkite" style="animation-delay:${d}s">${spr(k,x,y,2)}${Array.from({length:5},(_,i)=>`<rect x="${x+6+(i%2?2:0)}" y="${y+15+i*3}" width="2" height="2" fill="${i%2?'#FFD23F':'#FF5D8F'}"/>`).join('')}${Array.from({length:12},(_,i)=>`<rect x="${x+7-i*3}" y="${y+30+i*2}" width="1" height="1" fill="#1A1A2E"/>`).join('')}</g>`).join('')}`,
+national:()=>`${marble(54)}${spr(PARTHENON,8,30,1.6)}<rect x="62" y="6" width="3" height="48" fill="#1A1A2E"/><rect x="63" y="6" width="1" height="48" fill="#C9A227"/><rect x="61" y="3" width="5" height="4" fill="#FFD23F"/><rect x="58" y="51" width="11" height="3" fill="#B9AD97"/>
+<g>${wavingFlag(66,8,1.9)}</g>
+<g class="hop" style="animation-delay:.4s"><g transform="translate(176 22) scale(-1 1)">${spr(S.wreathL,0,0,2)}</g></g>${pconf(18,['#0D5EAF','#FFFFFF','#6EC6FF'])}`,
+goodfri:()=>[30,62,100,138,170].map((x,k)=>{const y=26+(k%2)*6;return `<rect class="glowp" x="${x-8}" y="${y-10}" width="20" height="20" fill="#FFD23F" opacity=".15"/><g class="flick" style="animation-delay:${k*.15}s">${spr(S.flame,x,y-6,1.4)}</g>${spr(S.candle.slice(0,8-(k%2)*2),x,y,1.4)}`}).join('')+[46,82,120,156].map((x,k)=>spr(k%2?S.flowerV:S.flowerP,x,50,1.3)).join(''),
+easter:()=>`${spr(S.sun,174,4,1.6)}${ground('#7BD389','#2EA44F',52)}
+${[[70,36],[86,32],[102,34],[118,38]].map(([x,y],k)=>`<g class="hop" style="animation-delay:${k*.2}s">${spr(S.egg,x,y,1.8)}</g>`).join('')}
+<g class="hop" style="animation-delay:.5s">${spr(S.chick,28,38,2)}</g>${spr(S.flowerP,150,40,1.8)}${spr(S.flowerY,166,42,1.6)}`,
+mayday:()=>`${spr(S.sun,8,4,1.6)}${ground('#7BD389','#2EA44F',54)}
+${Array.from({length:9},(_,k)=>`<g class="psway" style="animation-delay:${(k%3)*.3}s">${spr([S.flowerP,S.flowerV,S.flowerY][k%3],12+k*21,38+(k%2)*4,2)}</g>`).join('')}`,
+spirit:()=>`${spr(S.sun,166,4,1.8)}${waves(36,'#2E86DE','#6EC6FF')}${ground('#FFE29A','#F3C969',52)}
+<g class="hop">${spr(S.ball,40,40,2)}</g><g class="pcrab">${spr(S.crab,120,46,1.6)}</g><g class="pdrift slow">${spr(S.boat,0,22,1.6)}</g>`,
+august15:()=>`${spr(S.sun,8,4,1.6)}${spr(S.church,140,14,2)}${waves(44,'#2E86DE','#6EC6FF')}<g class="pdrift slow">${spr(S.boat,0,30,1.6)}</g><g class="jumpf">${spr(S.fish,70,50,1.5)}</g>`
+};
+function sceneSVG(th){return `<svg viewBox="0 0 200 60" preserveAspectRatio="xMidYMax meet" shape-rendering="crispEdges" aria-hidden="true" style="overflow:visible">${SCENES[th]()}</svg>`}
+
+function holidays(y){const E=orthodoxEaster(y);return[
+ [new Date(y,0,1),'Πρωτοχρονιά','newyear','Νέα χρονιά, νέοι στόχοι! Σήμερα το γυμναστήριο είναι κλειστό. Ξεκουράσου και έλα δυνατός από αύριο. 💪','Καλή Χρονιά!',`Χρόνια πολλά! Ας κάνουμε το ${y} τη δυνατότερή σου χρονιά.`],
+ [new Date(y,0,6),'Θεοφάνεια','epiphany','Χρόνια πολλά για τα Φώτα! Το γυμναστήριο σήμερα ξεκουράζεται, κάνε κι εσύ το ίδιο. 🕊️','Καλά Φώτα!','Χρόνια πολλά σε όσους γιορτάζουν! Τα λέμε αύριο στην προπόνηση.'],
+ [add(E,-48),'Καθαρά Δευτέρα','cleanmon','Χαρταετός αντί για βάρη σήμερα! Το γυμναστήριο είναι κλειστό. 🪁','Καλή Σαρακοστή!','Ψηλά ο χαρταετός, ελαφριά η λαγάνα. Καλή ξεκούραση!'],
+ [new Date(y,2,25),'25η Μαρτίου','national','Εθνική επέτειος σήμερα. Το γυμναστήριο είναι κλειστό, απόλαυσε την ημέρα. 🇬🇷','Χρόνια πολλά, Ελλάδα!','Τιμούμε την 25η Μαρτίου. Ξεκουράσου και γέμισε μπαταρίες.'],
+ [add(E,-2),'Μεγάλη Παρασκευή','goodfri','Το γυμναστήριο παραμένει κλειστό σήμερα. 🕯️','Μεγάλη Παρασκευή','Ημέρα περισυλλογής. Τα λέμε μετά τις γιορτές.'],
+ [E,'Πάσχα','easter','Σήμερα το μόνο βάρος είναι το σουβλάκι. Καλή ξεκούραση! 🥚','Χριστός Ανέστη!','Καλό Πάσχα σε σένα και τους δικούς σου! Απόλαυσε τη μέρα.'],
+ [add(E,1),'Δευτέρα του Πάσχα','easter','Το γυμναστήριο είναι κλειστό. Ξεκουράσου, οι θερμίδες περιμένουν αύριο! 😄','Καλές γιορτές!','Από αύριο ξανά στην προπόνηση για να κάψουμε το κοκορέτσι.'],
+ [new Date(y,4,1),'Πρωτομαγιά','mayday','Καλό μήνα! Σήμερα κλειστά, πήγαινε για λουλούδια. 🌼','Καλή Πρωτομαγιά!','Ο Μάης ήρθε. Πλέξε το στεφάνι σου και τα λέμε αύριο!'],
+ [add(E,50),'Αγίου Πνεύματος','spirit','Τριήμερο! Το γυμναστήριο είναι κλειστό, καλή απόδραση. 🏖️','Καλό τριήμερο!','Πρώτη θάλασσα της χρονιάς; Έχεις το κορμί, πήγαινε! 💪'],
+ [new Date(y,7,15),'Δεκαπενταύγουστος','august15','Το γυμναστήριο είναι κλειστό, απόλαυσε το καλοκαίρι. 🌊','Χρόνια πολλά!','Χρόνια πολλά σε Μαρίες και Παναγιώτηδες! Καλές βουτιές.'],
+ [new Date(y,9,28),'28η Οκτωβρίου','national','Επέτειος του ΟΧΙ. Το γυμναστήριο είναι κλειστό, πες κι εσύ ΟΧΙ στην κούραση. 🇬🇷','Χρόνια πολλά, Ελλάδα!','Τιμούμε την 28η Οκτωβρίου. Καλή ξεκούραση!'],
+ [new Date(y,11,25),'Χριστούγεννα','christmas','Σήμερα το γυμναστήριο είναι κλειστό. Μελομακάρονα τώρα, burpees μετά! 🎄','Καλά Χριστούγεννα!','Η ομάδα σου εύχεται χαρούμενες γιορτές με υγεία και αγάπη. ❤️'],
+ [new Date(y,11,26),'Σύναξη της Θεοτόκου','christmas','Δεύτερη μέρα Χριστουγέννων: κλειστά και σήμερα. Χαλάρωσε με τους δικούς σου. 🎁','Χρόνια πολλά!','Χρόνια πολλά σε όσους γιορτάζουν! Τα λέμε σύντομα στην προπόνηση.']
+].map(([date,name,th,msg,nt,nb])=>({date,name,th,msg,nt,nb}))}
+const inXmasSeason=d=>(d.getMonth()===11)||(d.getMonth()===0&&d.getDate()<=6);
+const up=s=>s.normalize('NFD').replace(/[\u0301\u0308]/g,'').normalize('NFC').toUpperCase();
+const day0=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+const holidayOn=d=>{d=day0(d);return holidays(d.getFullYear()).find(h=>h.date.getTime()===d.getTime())||null};
+/* Όλες οι δοκιμαστικές «στάσεις»: κάθε αργία της χρονιάς + μια μέρα της περιόδου Χριστουγέννων. */
+const testStops=y=>{const l=holidays(y).map(h=>({date:h.date,label:h.name}));
+  const i=l.findIndex(x=>x.date.getMonth()===11);l.splice(i,0,{date:new Date(y,11,10),label:'Περίοδος Χριστουγέννων'});return l};
+return {holidays,holidayOn,inXmasSeason,sceneSVG,T,up,testStops,day0};
+})();
+</script>
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useCallback } = React;
 
@@ -3753,6 +3927,62 @@ function AccountBody({ session, flash, onDeleted }) {
   );
 }
 
+/* ============================================================
+   Αργίες & γιορτινά θέματα
+   ΠΡΟΣΟΧΗ: προς το παρόν τα βλέπουν ΜΟΝΟ οι λογαριασμοί της λίστας
+   HOLIDAY_TESTERS. Για να ανοίξει σε όλους, αδειάζει ο έλεγχος στην
+   isHolidayTester. Δεν στέλνει καμία ειδοποίηση push.
+   ============================================================ */
+const HOLIDAY_TESTERS = ["478038f4-14f3-4228-9cbc-450c5b8a256d"];
+const isHolidayTester = (clientId) => HOLIDAY_TESTERS.includes(clientId);
+function holidayState(d) {
+  const H = window.PB3Holiday;
+  if (!H) return null;
+  const h = H.holidayOn(d);
+  const xmas = H.inXmasSeason(d);
+  if (!h && !xmas) return null;
+  const th = h ? h.th : "christmas";
+  return { h, xmas, season: xmas && !h, th, color: H.T[th][0], day: iso(H.day0(d)) };
+}
+function HolidayParticles({ hol }) {
+  const items = useMemo(() => {
+    const H = window.PB3Holiday;
+    const kinds = hol.xmas ? ['<i class="hol-px"></i>'] : H.T[hol.th][2];
+    if (!kinds.length) return [];
+    const n = hol.xmas ? 34 : 16;
+    return Array.from({ length: n }, (_, k) => ({ html: kinds[k % kinds.length], left: Math.random() * 100, dur: 6 + Math.random() * 6, delay: -Math.random() * 6 }));
+  }, [hol.th, hol.xmas, hol.day]);
+  return items.map((p, k) => (
+    <span key={k} className="hol-particle" aria-hidden="true"
+      style={{ left: p.left + "vw", animationDuration: p.dur + "s", animationDelay: p.delay + "s" }}
+      dangerouslySetInnerHTML={{ __html: p.html }} />
+  ));
+}
+function HolidayBanner({ hol }) {
+  const H = window.PB3Holiday;
+  const html = hol.h ? `${H.T[hol.th][1]} ${hol.h.nt}` : "Καλές γιορτές!";
+  return <div className="hol-banner"><b dangerouslySetInnerHTML={{ __html: html }} /></div>;
+}
+function HolidayScene({ hol }) {
+  const svg = useMemo(() => window.PB3Holiday.sceneSVG(hol.th), [hol.th, hol.day]);
+  return <div className="hol-scene" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+function HolidayGreet({ hol, onClose }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => { const r = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(r); }, []);
+  const H = window.PB3Holiday;
+  return (
+    <div className={`hol-greet${shown ? " in" : ""}`} role="dialog" aria-modal="true" aria-label={hol.h.nt}>
+      <div style={{ flex: "0.75 1 0%" }} />
+      <div className="ic" dangerouslySetInnerHTML={{ __html: H.T[hol.th][1] }} />
+      <h2>{H.up(hol.h.nt)}</h2>
+      <p>{hol.h.nb}</p>
+      <div style={{ flex: "1 1 0%" }} />
+      <button type="button" onClick={onClose}>Ευχαριστώ!</button>
+    </div>
+  );
+}
+
 function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSignedUp, flash, theme, setTheme }) {
   const [tab, setTab] = useState("book");
   const [askPush, setAskPush] = useState(false);
@@ -4029,8 +4259,29 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     });
   }, [notifs]);
 
+  /* Αργίες: μόνο για λογαριασμούς δοκιμής. holTest = δοκιμαστική μέρα (-1 = σήμερα). */
+  const holTester = isHolidayTester(session.clientId);
+  const [holTest, setHolTest] = useState(-1);
+  const holStops = useMemo(() => (holTester && window.PB3Holiday ? window.PB3Holiday.testStops(new Date().getFullYear()) : []), [holTester]);
+  const hol = useMemo(() => (holTester ? holidayState(holTest >= 0 ? holStops[holTest].date : new Date()) : null), [holTester, holTest, holStops]);
+  const [holGreet, setHolGreet] = useState(false);
+  useEffect(() => {
+    const r = document.documentElement;
+    if (hol) { r.dataset.hol = hol.th; r.style.setProperty("--hol", hol.color); }
+    else { delete r.dataset.hol; r.style.removeProperty("--hol"); }
+    return () => { delete r.dataset.hol; r.style.removeProperty("--hol"); };
+  }, [hol]);
+  useEffect(() => {
+    if (!hol || !hol.h) { setHolGreet(false); return; }
+    if (holTest >= 0) { setHolGreet(true); return; }
+    const key = "pb3_hol_seen_" + hol.day;
+    let seen = false;
+    try { seen = localStorage.getItem(key) === "1"; } catch (e) { /* αγνόησε */ }
+    if (!seen) { setHolGreet(true); try { localStorage.setItem(key, "1"); } catch (e) { /* αγνόησε */ } }
+  }, [hol, holTest]);
+
   return (
-    <div className="mx-auto flex h-full max-w-md flex-col overflow-hidden">
+    <div className={`mx-auto flex h-full max-w-md flex-col overflow-hidden${hol ? " gym-hol" : ""}`}>
       <header className="shrink-0 flex items-center justify-between border-b border-black bg-white px-5 pb-4"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 16px)" }}>
         <div className="flex min-w-0 items-center gap-3">
@@ -4072,6 +4323,8 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
           </button>
         </div>
       </header>
+
+      {hol && !settingsOpen && <HolidayBanner hol={hol} />}
 
       {cancelled.length > 0 && !notifs.some((n) => n.kind === "cancelled") && (
         <div className="mx-5 mt-4 shrink-0 border border-black bg-black text-white">
@@ -4116,12 +4369,14 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
             onGoalsChange={setHasGoals} workoutOn={workoutOn} setWorkoutOn={setWorkoutOn} />
         ) : (
           <React.Fragment>
-            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} sig={upcomingSig} />}
+            {tab === "book" && <BookTab session={session} flash={flash} credits={credits} hasAhead={hasAhead} onMine={reportMine} sig={upcomingSig} hol={hol} />}
             {tab === "mine" && <MyBookings session={session} flash={flash} onMine={reportMine} />}
             {tab === "chat" && chatOn && <ChatTab session={session} flash={flash} onRead={markChatRead} onClosed={chatClosed} />}
           </React.Fragment>
         )}
       </main>
+
+      {hol && hol.h && tab === "book" && !settingsOpen && <HolidayScene hol={hol} />}
 
       <nav className="shrink-0 border-t border-black bg-white" style={{ borderTopWidth: "0.5px" }}>
         <div className="flex">
@@ -4161,7 +4416,22 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
         <MotivationPopup item={motivation} onClose={closeMotivation} />
       )}
 
-      {daily && !motivation && prompts.length === 0 && (
+      {hol && <HolidayParticles hol={hol} />}
+
+      {hol && hol.h && holGreet && <HolidayGreet hol={hol} onClose={() => setHolGreet(false)} />}
+
+      {holTester && (holTest < 0 ? (
+        <div className="hol-test"><button type="button" aria-label="Δοκιμή αργιών" onClick={() => setHolTest(0)}>🎄</button></div>
+      ) : (
+        <div className="hol-test" role="group" aria-label="Δοκιμή αργιών">
+          <button type="button" aria-label="Προηγούμενη" onClick={() => setHolTest((i) => (i <= 0 ? holStops.length - 1 : i - 1))}>◀</button>
+          <span>{holTest + 1}/{holStops.length} · {holStops[holTest].label}</span>
+          <button type="button" aria-label="Επόμενη" onClick={() => setHolTest((i) => (i + 1) % holStops.length)}>▶</button>
+          <button type="button" aria-label="Τέλος δοκιμής" onClick={() => setHolTest(-1)}>✕</button>
+        </div>
+      ))}
+
+      {daily && !motivation && !holGreet && prompts.length === 0 && (
         <DailyGreeting item={daily} onClose={closeDaily} />
       )}
     </div>
@@ -4718,7 +4988,8 @@ const STATE_LABEL = {
   forfeit: "Δεν ήρθες",
 };
 
-function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
+function BookTab({ session, flash, credits, hasAhead, onMine, sig, hol }) {
+  const holSnow = !!(hol && hol.season);
   const [date, setDate] = useState(iso(new Date()));
   const [slots, setSlots] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -4938,6 +5209,11 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
             <p className="f-display mx-auto max-w-[22ch] whitespace-pre-line text-[24px] font-extrabold leading-snug tracking-tight text-black">
               {dayNote}
             </p>
+          ) : hol && hol.h && date === hol.day ? (
+            <div className="hol-rest">
+              <h3>Ξεκουράσου</h3>
+              <p className="f-text mx-auto mt-3 max-w-[32ch] text-[15px] leading-relaxed text-neutral-500">{hol.h.msg}</p>
+            </div>
           ) : (<>
           <div className="f-display text-[34px] font-extrabold uppercase leading-none tracking-tight">
             Ξεκουράσου 🖤
@@ -4964,7 +5240,7 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
                απάντηση ΟΧΙ δεν ακυρώνεται (το απορρίπτει και η βάση). */
             const attended = !!myB && st !== "booked";
             return (
-              <div key={s.slot_time} className="px-5 py-4">
+              <div key={s.slot_time} className={`px-5 py-4${holSnow ? " hol-snowy" : ""}`}>
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <FlipNum value={s.slot_time} className="f-mono block text-[28px] leading-none tracking-tight" />
@@ -5019,7 +5295,7 @@ function BookTab({ session, flash, credits, hasAhead, onMine, sig }) {
                         Δήλωση ενδιαφέροντος
                       </Button>
                     ) : (
-                      <Button size="sm" disabled={isBusy || noCredits} onClick={() => book(s.slot_time)}>Κράτηση</Button>
+                      <Button size="sm" className={holSnow ? "hol-frost" : ""} disabled={isBusy || noCredits} onClick={() => book(s.slot_time)}>Κράτηση</Button>
                     )}
                   </div>
                 </div>
