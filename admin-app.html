@@ -2100,7 +2100,9 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
 
   return (
     <div>
-      <div ref={stripRef} className="flex gap-2 overflow-x-auto px-5 pb-2 pt-6 sm:px-6">
+      {/* Λωρίδα ημερών, τίτλος και κουτάκια: ένα μπλοκ καρφωμένο πάνω. */}
+      <div className="kpi-sticky sticky z-30 border-b border-neutral-200 bg-white">
+      <div ref={stripRef} className="flex gap-2 overflow-x-auto px-5 pb-2 pt-3 sm:px-6">
         {days.map((dd0) => {
           const dd = parseISO(dd0), on = dd0 === date, isToday = dd0 === todayISO;
           /* Οι περασμένες μέρες πιο σβηστές, ώστε με μια βδομάδα πίσω
@@ -2121,17 +2123,18 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-3 px-5 pt-4 sm:px-6">
-        <h2 className="f-display text-[24px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
+      <div className="flex items-center justify-between gap-3 px-5 pt-2 sm:px-6">
+        <h2 className="f-display text-[22px] font-extrabold uppercase tracking-tight">{fmtDayLong(date)}</h2>
         {date !== todayISO && <Button variant="ghost" size="sm" onClick={() => setDate(todayISO)}>Σήμερα</Button>}
       </div>
 
       {/* Μικρά κουτάκια σε μία σειρά, καρφωμένα κάτω από την πάνω μπάρα. */}
-      <div className="kpi-sticky sticky z-30 mt-3 grid grid-cols-4 gap-2 bg-white px-5 py-2 sm:px-6">
+      <div className="mt-2 grid grid-cols-4 gap-2 bg-white px-5 pb-3 pt-1 sm:px-6">
         <KpiMini label="Κρατήσεις" value={total} onClick={() => openDetail("bookings")} />
         <KpiMini label="Check-ins" value={checkins} onClick={() => openDetail("checkins")} />
         <KpiMini label="Ακυρώσεις" value={data?.cancelled ?? 0} onClick={() => openDetail("cancelled")} />
         <KpiMini label="Πληρότητα" value={`${fill}%`} onClick={() => openDetail("fill")} />
+      </div>
       </div>
 
       {d && (
