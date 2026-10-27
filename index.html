@@ -2165,7 +2165,7 @@ const marble=(y)=>{let o=`<rect x="-20" y="${y}" width="240" height="${60-y}" fi
  for(let x=-20;x<220;x+=24)o+=`<rect x="${x}" y="${y}" width="1" height="${60-y}" fill="#D6CDBC"/>`;
  [[6,2],[30,4],[58,3],[90,5],[124,2],[150,4],[182,3]].forEach(([x,dy])=>o+=`<rect x="${x}" y="${y+dy}" width="3" height="1" fill="#C9BFAD"/><rect x="${x+3}" y="${y+dy+1}" width="4" height="1" fill="#C9BFAD"/>`);return o};
 const FLAGROWS=(()=>{const r=[];for(let i=0;i<18;i++){let s='';for(let j=0;j<27;j++){let c=(Math.floor(i/2)%2===0)?'b':'W';if(i<10&&j<10)c=(i===4||i===5||j===4||j===5)?'W':'b';s+=c}r.push(s)}return r})();
-const flagSmall=["bbWbbbbb","WWWWWWWW","bbWbbWWW","bbbbbbbb","WWWWWWWW","bbbbbbbb"];
+const flagSmall=["bbWbbbbbbbbbbb","bbWbbWWWWWWWWW","WWWWWbbbbbbbbb","bbWbbWWWWWWWWW","bbWbbbbbbbbbbb","WWWWWWWWWWWWWW","bbbbbbbbbbbbbb","WWWWWWWWWWWWWW","bbbbbbbbbbbbbb"];
 /* Η σημαία κυματίζει σε στήλες, σαν παλιό sprite. */
 function wavingFlag(x,y,s){let o='';for(let j=0;j<27;j++){const col=FLAGROWS.map(r=>r[j]);o+=`<g class="fw" style="animation-delay:${(-j*0.06).toFixed(2)}s">`;col.forEach((c,i)=>o+=`<rect x="${x+j*s}" y="${y+i*s}" width="${s}" height="${s}" fill="${PAL[c]}"/>`);o+=`</g>`}return o}
 const ground=(c1,c2,y=52)=>{let o=`<rect x="-20" y="${y+1}" width="240" height="${Math.max(0,60-y-1)}" fill="${c1}"/>`;for(let x=-20;x<220;x+=2)o+=`<rect x="${x}" y="${y-(x%6===0?1:0)}" width="2" height="${(x%6===0?2:1)}" fill="${c2}"/>`;return o+`<rect x="-20" y="${y-2}" width="240" height="1" fill="#1A1A2E" opacity="0"/>`};
