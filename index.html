@@ -2111,8 +2111,7 @@ html[data-hol]:not([data-theme="dark"]) #root .gym-hol .border-black { border-co
 /* ── Αργίες & γιορτινά θέματα ─────────────────────────────────
    Ελληνικές αργίες (σταθερές + από το ορθόδοξο Πάσχα), pixel σκηνές,
    μηνύματα και η χριστουγεννιάτικη περίοδος 1/12–6/1.
-   Προς το παρόν ενεργό ΜΟΝΟ για τους λογαριασμούς δοκιμής
-   (HOLIDAY_TESTERS στο κυρίως script). */
+   Ενεργό για όλους τους πελάτες. */
 window.PB3Holiday=(function(){
 function orthodoxEaster(y){const a=y%4,b=y%7,c=y%19,d=(19*c+15)%30,e=(2*a+4*b-d+34)%7;const m=Math.floor((d+e+114)/31),day=((d+e+114)%31)+1;const r=new Date(y,m-1,day);r.setDate(r.getDate()+13);return r}
 const add=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
@@ -3929,9 +3928,9 @@ function AccountBody({ session, flash, onDeleted }) {
 
 /* ============================================================
    Αργίες & γιορτινά θέματα
-   ΠΡΟΣΟΧΗ: προς το παρόν τα βλέπουν ΜΟΝΟ οι λογαριασμοί της λίστας
-   HOLIDAY_TESTERS. Για να ανοίξει σε όλους, αδειάζει ο έλεγχος στην
-   isHolidayTester. Δεν στέλνει καμία ειδοποίηση push.
+   Ενεργά για όλους τους πελάτες. Οι λογαριασμοί της λίστας
+   HOLIDAY_TESTERS έχουν επιπλέον το κουμπί 🎄 για να βλέπουν κάθε γιορτή.
+   Η πρωινή ειδοποίηση των αργιών στέλνεται από τη βάση (send_holiday_greeting).
    ============================================================ */
 const HOLIDAY_TESTERS = ["478038f4-14f3-4228-9cbc-450c5b8a256d"];
 const isHolidayTester = (clientId) => HOLIDAY_TESTERS.includes(clientId);
@@ -4259,11 +4258,11 @@ function ClientApp({ session, onLogout, onAccountGone, justSignedUp, clearSigned
     });
   }, [notifs]);
 
-  /* Αργίες: μόνο για λογαριασμούς δοκιμής. holTest = δοκιμαστική μέρα (-1 = σήμερα). */
+  /* Αργίες & γιορτινά θέματα για όλους. holTest = δοκιμαστική μέρα (-1 = σήμερα), μόνο για HOLIDAY_TESTERS. */
   const holTester = isHolidayTester(session.clientId);
   const [holTest, setHolTest] = useState(-1);
   const holStops = useMemo(() => (holTester && window.PB3Holiday ? window.PB3Holiday.testStops(new Date().getFullYear()) : []), [holTester]);
-  const hol = useMemo(() => (holTester ? holidayState(holTest >= 0 ? holStops[holTest].date : new Date()) : null), [holTester, holTest, holStops]);
+  const hol = useMemo(() => holidayState(holTester && holTest >= 0 ? holStops[holTest].date : new Date()), [holTester, holTest, holStops]);
   const [holGreet, setHolGreet] = useState(false);
   useEffect(() => {
     const r = document.documentElement;
