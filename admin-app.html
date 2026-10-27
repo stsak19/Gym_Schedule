@@ -2563,7 +2563,7 @@ function Hours({ flash, onAuthFail }) {
       {loading ? (
         <div className="f-text py-10 text-[14px] text-neutral-400">Φόρτωση…</div>
       ) : (
-        <div className="mt-6 divide-y divide-neutral-200 border-y-2 border-black">
+        <div className="mt-4 space-y-2">
           {slots.map((s) => (
             <HourRow key={s.slot_time} slot={s} scope={scope} onSave={save} />
           ))}
@@ -2578,24 +2578,54 @@ function HourRow({ slot, scope, onSave }) {
   const [val, setVal] = useState(slot.capacity);
   useEffect(() => { setVal(slot.capacity); }, [slot.capacity, slot.slot_time]);
   const dirty = val !== slot.capacity;
-  const closed = slot.capacity === 0;
+  const closed = val === 0;
+  const min = scope === "weekday" ? 0 : slot.taken;
+  const pct = val > 0 ? Math.min(100, Math.round((slot.taken / val) * 100)) : 0;
+  const full = val > 0 && slot.taken >= val;
 
   return (
-    /* Πλέγμα με σταθερές στήλες: ο αριθμός στέκεται πάντα στην ίδια ευθεία,
-       όσο μακρύ κι αν είναι το κείμενο αριστερά («Κλειστή — …»). */
-    <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${closed ? "opacity-60" : ""}`}>
-      <div className="min-w-0">
-        <span className="f-mono block text-[17px] leading-none">{slot.slot_time}</span>
-        <span className="f-text mt-1 block text-[12px] leading-snug text-neutral-400">
-          {closed ? "Κλειστή — δεν φαίνεται στους πελάτες" : `${slot.taken} κρατήσεις`}
-        </span>
+    <div className={`rounded-2xl border-2 p-3.5 transition-colors ${
+      dirty ? "border-black" : closed ? "border-neutral-200 bg-neutral-50" : "border-neutral-200"}`}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`f-mono text-[20px] leading-none ${closed ? "text-neutral-400" : ""}`}>{slot.slot_time}</span>
+            {closed && (
+              <span className="f-display rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600">Κλειστή</span>
+            )}
+            {full && !closed && scope === "date" && (
+              <span className="f-display rounded-full bg-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Γεμάτη</span>
+            )}
+          </div>
+          {scope === "date" && !closed ? (
+            <>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                <div className="h-full rounded-full bg-black" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="f-text mt-1 text-[12px] text-neutral-500">{slot.taken} από {val} θέσεις</div>
+            </>
+          ) : (
+            <div className="f-text mt-1 text-[12px] text-neutral-500">
+              {closed ? "Δεν φαίνεται στους πελάτες" : `${val} θέσεις`}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center rounded-full border-2 border-black">
+          <button onClick={() => setVal(Math.max(min, val - 1))} disabled={val <= min} aria-label="Λιγότερες θέσεις"
+            className="f-display flex h-10 w-10 items-center justify-center rounded-full text-[20px] font-bold active:bg-black active:text-white disabled:opacity-30">−</button>
+          <span className="f-mono w-9 text-center text-[17px]">{val}</span>
+          <button onClick={() => setVal(Math.min(80, val + 1))} aria-label="Περισσότερες θέσεις"
+            className="f-display flex h-10 w-10 items-center justify-center rounded-full text-[20px] font-bold active:bg-black active:text-white">+</button>
+        </div>
       </div>
-      <div className="justify-self-end">
-        <Stepper value={val} min={scope === "weekday" ? 0 : slot.taken} max={80} onChange={setVal} />
-      </div>
-      {/* Στο κινητό δεν χωράει δίπλα: φαίνεται από κάτω, μόνο όταν αλλάξει κάτι. */}
-      <Button size="sm" disabled={!dirty} onClick={() => onSave(slot.slot_time, val)}
-        className={dirty ? "col-span-2 w-full sm:col-span-1 sm:w-auto" : "hidden sm:inline-flex"}>Αποθήκευση</Button>
+      {dirty && (
+        <div className="mt-3 flex gap-2">
+          <button onClick={() => setVal(slot.capacity)}
+            className="f-display h-10 flex-1 rounded-xl border-2 border-neutral-300 text-[12px] font-bold uppercase tracking-wide">Άκυρο</button>
+          <button onClick={() => onSave(slot.slot_time, val)}
+            className="f-display h-10 flex-[2] rounded-xl bg-black text-[12px] font-bold uppercase tracking-wide text-white">Αποθήκευση</button>
+        </div>
+      )}
     </div>
   );
 }
