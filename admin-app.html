@@ -139,6 +139,8 @@ body { -webkit-tap-highlight-color: transparent; }
 [data-theme="dark"] .app-sheet button { background: transparent !important; border-color: #2A2A2A !important; }
 html, body { overscroll-behavior-y: none; }
 .app-bar, .app-bar * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.kpi-sticky { top: 0; }
+.app-screen .kpi-sticky { top: calc(3.5rem + env(safe-area-inset-top)); }
 .app-screen .sticky.bottom-0 { bottom: calc(4rem + env(safe-area-inset-bottom)); }
 .app-screen { animation: appIn .18s ease-out; }
 @keyframes appIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -1059,6 +1061,16 @@ function Kpi({ label, value, note, onClick }) {
     <button onClick={onClick}
       className="border-2 border-black p-3 text-left hover:bg-neutral-50 active:bg-black active:text-white">
       {inner}
+    </button>
+  );
+}
+
+function KpiMini({ label, value, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="min-w-0 rounded-xl border-2 border-black px-1.5 py-1.5 text-center active:bg-black active:text-white">
+      <div className="f-mono text-[18px] leading-none tracking-tight">{value}</div>
+      <div className="f-text mt-1 truncate text-[10px] text-neutral-600">{label}</div>
     </button>
   );
 }
@@ -2104,11 +2116,12 @@ function Schedule({ flash, onAuthFail, refreshKey, newItems, focus, onSeen, seen
         {date !== todayISO && <Button variant="ghost" size="sm" onClick={() => setDate(todayISO)}>Σήμερα</Button>}
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3 px-5 sm:grid-cols-4 sm:gap-4 sm:px-6">
-        <Kpi label="Κρατήσεις" value={total} onClick={() => openDetail("bookings")} />
-        <Kpi label="Check-ins" value={checkins} onClick={() => openDetail("checkins")} />
-        <Kpi label="Ακυρώσεις" value={data?.cancelled ?? 0} onClick={() => openDetail("cancelled")} />
-        <Kpi label="Πληρότητα" value={`${fill}%`} note={`${total}/${totalCap}`} onClick={() => openDetail("fill")} />
+      {/* Μικρά κουτάκια σε μία σειρά, καρφωμένα κάτω από την πάνω μπάρα. */}
+      <div className="kpi-sticky sticky z-30 mt-3 grid grid-cols-4 gap-2 bg-white px-5 py-2 sm:px-6">
+        <KpiMini label="Κρατήσεις" value={total} onClick={() => openDetail("bookings")} />
+        <KpiMini label="Check-ins" value={checkins} onClick={() => openDetail("checkins")} />
+        <KpiMini label="Ακυρώσεις" value={data?.cancelled ?? 0} onClick={() => openDetail("cancelled")} />
+        <KpiMini label="Πληρότητα" value={`${fill}%`} onClick={() => openDetail("fill")} />
       </div>
 
       {d && (
