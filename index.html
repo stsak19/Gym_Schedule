@@ -3932,7 +3932,8 @@ function AccountBody({ session, flash, onDeleted }) {
    HOLIDAY_TESTERS έχουν επιπλέον το κουμπί 🎄 για να βλέπουν κάθε γιορτή.
    Η πρωινή ειδοποίηση των αργιών στέλνεται από τη βάση (send_holiday_greeting).
    ============================================================ */
-const HOLIDAY_TESTERS = ["478038f4-14f3-4228-9cbc-450c5b8a256d"];
+/* Λογαριασμοί που βλέπουν το κουμπί 🎄 δοκιμής. Άδειο = κανείς. */
+const HOLIDAY_TESTERS = [];
 const isHolidayTester = (clientId) => HOLIDAY_TESTERS.includes(clientId);
 function holidayState(d) {
   const H = window.PB3Holiday;
